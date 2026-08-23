@@ -1,0 +1,17 @@
+# dsh-headroom bundle patch: one row over the profile root.
+# The proxy URL is optional: unset (null) degrades compression to a no-op
+# with a warning — no proxy is spawned or managed by this bundle.
+- insert:
+    - id: dsh-headroom
+      name: dsh-headroom
+      config:
+        enabled: true
+        baseUrl: !!js process.env.DSH_HEADROOM_URL ?? null
+        mode: normal
+        minContextTokens: 20000
+        minMessageChars: 2000
+        timeoutMs: 30000
+        throttleMs: 3000
+        allowRemote: false
+        renameToolCalls: true
+        maxSeenFingerprints: 512

@@ -1,0 +1,47 @@
+{
+  "name": "dsh-ponytail",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "DeepSeek Harness port of DietrichGebert/ponytail: lazy-senior-dev build discipline (the YAGNI ladder), always-on ruleset, subagent propagation, bundled skills, and slash commands.",
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": [
+    "lib/",
+    "cordis.patch.yml",
+    "skills/",
+    "prompts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-commands": "*",
+    "@deepseek-ai/dsh-llm": "*",
+    "@deepseek-ai/dsh-skill": "*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-agent": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-commands": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-invariants": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-jobs": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-llm": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-skill": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-system-prompt": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-tools": "^0.0.1-rc.5",
+    "@types/node": "^22.19.19",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  }
+}

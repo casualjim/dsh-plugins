@@ -1,0 +1,5 @@
+---
+description: Quick reference for ponytail levels, skills, and commands
+---
+
+Show the ponytail quick reference. One shot, change nothing: do not switch mode, write flag files, or persist anything. Levels: `/ponytail lite` (build what's asked, name the lazier alternative in one line), `/ponytail` (full, the default ladder: YAGNI → reuse → stdlib → native → installed dep → one line → minimum), `/ponytail ultra` (deletion before addition, challenges the requirement before building), `/ponytail off` (deactivate). Commands: `/ponytail-review` (over-engineering review of the current changes), `/ponytail-audit` (whole-repo over-engineering audit), `/ponytail-debt` (harvest `ponytail:` comments into a tracked ledger), `/ponytail-gain` (measured-impact scoreboard from the benchmark), `/ponytail-help` (this card). Deactivate with "stop ponytail", "normal mode", or `/ponytail off`; resume anytime with `/ponytail`. Default mode is `full`; in dsh-ponytail it is set on the plugin row (`config.defaultMode`), falling back to the `PONYTAIL_DEFAULT_MODE` env var, then `full`. Resolution: row config, env var, full.

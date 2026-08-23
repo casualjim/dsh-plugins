@@ -1,0 +1,82 @@
+---
+name: cavekit-build
+description: Plan and execute implementation against Cavekit SPEC.md. Use when users invoke /ck-build, ask to build from SPEC.md, implement Cavekit tasks, build the next task, or run a selected §T task.
+---
+
+# cavekit-build — implement SPEC.md tasks
+
+Single-thread plan-then-execute against project-root `SPEC.md`. No swarm, hooks, or runtime orchestration.
+
+Read bundled `../../FORMAT.md` before parsing task status or spec references. The bundled file defines format; project-root `SPEC.md` is the working artifact.
+
+## Load
+
+1. Read `SPEC.md` from project root. If missing, tell the user to invoke `/ck-spec` first and stop.
+2. Parse invocation args:
+   - `§T.n` or `Tn` → that task only
+   - `--next` → lowest-numbered row with status `.` or `~`
+   - `--all` or no args → every `.` row in §T order
+3. Identify applicable §V invariants and §I interfaces for chosen task(s).
+4. If chosen task cites §V/§I refs not present in current sections, parse archive comments and read referenced `.cavekit/archive/SPEC-*.md` copies to resolve full archived text.
+5. Read §R if present — external facts the build ! honor, ⊥ re-derive or contradict.
+6. High blast radius (shared module, auth, data, money, public §I)? Suggest `/ck-review` first. Trivial & reversible? Skip planning ceremony.
+5. For any new task/status reasoning, treat IDs as monotonic across current tables, archive comments, and archived `SPEC.md` copies.
+
+## Plan
+
+For the chosen task(s), produce a concise plan before editing:
+
+1. Cite each §V invariant that applies, including archived invariant text when a task cites archived §V.
+2. Cite each §I interface touched, including archived interface text when a task cites archived §I.
+3. List files to create or edit.
+4. **Verification contract** — name the EXACT test(s) / acceptance criteria that prove each §V touched. Which test, not "add tests". "Do TDD" alone backfires; the spec says *what to check*. Each §V touched → a named test that fails first.
+5. Name verification commands.
+
+Share the full plan in normal assistant text first: cited §V/§I, files, tests, verification commands, tradeoffs, and recommendation. Then use `ask_user_question` for approval unless the user explicitly asked for autonomous execution. Do not put the plan in the question field, option descriptions, or previews. The question UI is only for concise decision controls such as approve, revise plan, or stop.
+
+## Execute
+
+Per task in order:
+
+1. Flip selected §T row status from `.` to `~` in `SPEC.md`.
+2. Make minimal code/test/doc changes for that task only.
+3. Run the planned verification command(s).
+4. If verification passes, flip status from `~` to `x`.
+5. If verification fails, stop blind retries and run backprop analysis.
+
+## Failure → backprop
+
+On test/build failure:
+
+1. Read the failure output.
+2. Classify cause with the user when needed via `ask_user_question`:
+   - code bug in current implementation
+   - spec is wrong
+   - edge case missing from spec
+3. If it is only a code bug, fix code and rerun verification.
+4. If spec is wrong or incomplete, use `cavekit-backprop` and `cavekit-spec` to update §B/§V/§T before resuming.
+
+Never silently fix a root cause that should become spec memory.
+
+## Write policy
+
+- `cavekit-build` may flip §T status cells for chosen tasks.
+- Other `SPEC.md` edits belong to `cavekit-spec`.
+- Do not commit automatically. Commit only when the user explicitly asks in this session.
+- Keep changes scoped to selected tasks.
+
+## Completion criteria
+
+A task can be marked `x` only when:
+
+- planned verification exits 0, or the user explicitly accepts a documented reason verification cannot run;
+- required tests or checks were added/updated where practical;
+- touched §V invariants are not knowingly regressed;
+- implementation matches cited §I surfaces.
+
+## Non-goals
+
+- No sub-agents by default.
+- No parallel workers.
+- No dashboards or managed state beyond `SPEC.md`.
+- No speculative work outside selected task scope.
