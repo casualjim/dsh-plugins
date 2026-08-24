@@ -45,6 +45,7 @@ import {
   stableHash,
 } from './bridge.js'
 import { isRemoteBlocked, resolveConfig } from './config.js'
+import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import { HeadroomTransport } from './transport.js'
 import type {
   HeadroomConfig,
@@ -78,6 +79,13 @@ function emptyStats(): HeadroomStats {
     charsRemoved: 0,
     nodesReplaced: 0,
   }
+}
+
+/** Build the proxy transport for one resolved configuration, or `null`. */
+function buildTransport(config: ResolvedHeadroomConfig): HeadroomTransport | null {
+  return config.baseUrl === null
+    ? null
+    : new HeadroomTransport({ baseUrl: config.baseUrl, timeoutMs: config.timeoutMs })
 }
 
 /** Replace the text blocks of one DSH tool-result message with compressed text. */
@@ -121,12 +129,16 @@ export class HeadroomCompressor extends Service {
     maxSeenFingerprints: z.number().step(1).min(16).default(512),
   })
 
-  /** Resolved immutable configuration. */
-  readonly config: ResolvedHeadroomConfig
+  /** Current effective configuration (row config, then live settings writes). */
+  get config(): ResolvedHeadroomConfig {
+    return this.runtime
+  }
+
   /** Per-process cumulative counters. */
   readonly stats: HeadroomStats
 
-  private readonly _transport: HeadroomTransport | null
+  private runtime: ResolvedHeadroomConfig
+  private _transport: HeadroomTransport | null
   private readonly seen: SeenContentCache
   private enabled: boolean
   private mode: HeadroomMode
@@ -139,14 +151,13 @@ export class HeadroomCompressor extends Service {
 
   constructor(ctx: Context, config: HeadroomConfig = {}) {
     super(ctx, 'headroom')
-    this.config = resolveConfig(config)
-    this.enabled = this.config.enabled
-    this.mode = this.config.mode
-    this.seen = new SeenContentCache(this.config.maxSeenFingerprints)
-    this._transport = this.config.baseUrl === null
-      ? null
-      : new HeadroomTransport({ baseUrl: this.config.baseUrl, timeoutMs: this.config.timeoutMs })
+    this.runtime = resolveConfig(config)
+    this.enabled = this.runtime.enabled
+    this.mode = this.runtime.mode
+    this.seen = new SeenContentCache(this.runtime.maxSeenFingerprints)
+    this._transport = buildTransport(this.runtime)
     this.stats = emptyStats()
+    this.installSettingsSection(config)
 
     const self = this
     this.ctx.effect(function* () {
@@ -193,6 +204,45 @@ export class HeadroomCompressor extends Service {
     return this._transport !== null
       && this.config.baseUrl !== null
       && !isRemoteBlocked(this.config)
+  }
+
+  /**
+   * Register the `headroom` settings namespace so configuration UIs can read
+   * and write it (persisted by the settings-file provider). Row config is the
+   * composition `base`; user settings layer on top; live writes are applied
+   * to the running service through {@link applySettings}.
+   */
+  private installSettingsSection(entry: HeadroomConfig): void {
+    const self = this
+    let source: () => unknown = () => self.runtime
+    installSettingsSection(
+      this.ctx,
+      settingsNamespace('headroom'),
+      HeadroomCompressor.Config,
+      entry as never,
+      {
+        setSource: (current: () => unknown) => { source = current },
+        onChange: () => { self.applySettings(source() as ResolvedHeadroomConfig) },
+      },
+    )
+  }
+
+  /** Re-resolve and live-apply a new configuration (settings write or attach). */
+  applySettings(next: ResolvedHeadroomConfig): void {
+    const resolved = resolveConfig(next)
+    const transportChanged = resolved.baseUrl !== this.runtime.baseUrl
+      || resolved.timeoutMs !== this.runtime.timeoutMs
+    this.runtime = resolved
+    this.enabled = resolved.enabled
+    this.mode = resolved.mode
+    if (transportChanged) {
+      this._transport = buildTransport(resolved)
+      this.degradedWarningShown = false
+      this.ctx.logger.info(
+        `dsh-headroom proxy ${resolved.baseUrl ?? 'unset (degraded)'}`
+        + `, timeout ${resolved.timeoutMs}ms`,
+      )
+    }
   }
 
   /**

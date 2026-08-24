@@ -1,0 +1,15 @@
+# Bundle patch for dsh-codebase-memory.
+#
+# The mcp-client row MUST come first: tier subagents mount with a toolFilter
+# allow-list naming `mcp__codebase-memory-mcp__*` tools, and unknown allow
+# names fail startup. Sequential insertion + mcp-client awaiting listTools()
+# during activation puts the graph tools on the registry before the tiers load.
+- insert:
+    - id: mcp-codebase-memory
+      name: '@deepseek-ai/dsh-mcp-client'
+      config:
+        serverName: codebase-memory-mcp
+        transport: stdio
+        command: !!js process.env.HOME + '/.local/bin/codebase-memory-mcp'
+    - id: dsh-codebase-memory
+      name: dsh-codebase-memory

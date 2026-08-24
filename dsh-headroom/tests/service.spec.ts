@@ -215,3 +215,55 @@ describe('HeadroomCompressor toggles', () => {
     expect(service.getMode()).toBe('silent')
   })
 })
+
+describe('HeadroomCompressor settings application', () => {
+  const base = {
+    enabled: true,
+    baseUrl: 'http://127.0.0.1:8787',
+    mode: 'normal',
+    minContextTokens: 20000,
+    minMessageChars: 2000,
+    timeoutMs: 30000,
+    throttleMs: 3000,
+    allowRemote: false,
+    renameToolCalls: true,
+    maxSeenFingerprints: 512,
+  } as const
+
+  it('live-applies a baseUrl change by rebuilding the transport', () => {
+    const { service } = makeService({ baseUrl: null })
+    expect(service.ready).toBe(false)
+    expect(service.transport).toBeNull()
+
+    service.applySettings({ ...base })
+    expect(service.ready).toBe(true)
+    expect(service.transport).not.toBeNull()
+    expect(service.config.baseUrl).toBe('http://127.0.0.1:8787')
+  })
+
+  it('degrades again when baseUrl is cleared from settings', () => {
+    const { service } = makeService({ baseUrl: 'http://127.0.0.1:8787' })
+    expect(service.ready).toBe(true)
+    service.applySettings({ ...base, baseUrl: null })
+    expect(service.ready).toBe(false)
+    expect(service.transport).toBeNull()
+  })
+
+  it('applies mode and enabled from settings', () => {
+    const { service } = makeService()
+    service.applySettings({ ...base, mode: 'silent', enabled: false })
+    expect(service.getMode()).toBe('silent')
+    expect(service.isEnabled()).toBe(false)
+  })
+
+  it('rejects unknown settings keys through config validation', () => {
+    const { service } = makeService()
+    expect(() => service.applySettings({ ...base, autoStart: true } as never)).toThrow(/unknown key "autoStart"/)
+  })
+
+  it('normalizes out-of-range settings to defaults', () => {
+    const { service } = makeService()
+    service.applySettings({ ...base, minMessageChars: 0 })
+    expect(service.config.minMessageChars).toBe(2000)
+  })
+})

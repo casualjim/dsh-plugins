@@ -56,11 +56,12 @@ export declare class HeadroomCompressor extends Service {
         renameToolCalls: z<boolean, boolean>;
         maxSeenFingerprints: z<number, number>;
     }>>;
-    /** Resolved immutable configuration. */
-    readonly config: ResolvedHeadroomConfig;
+    /** Current effective configuration (row config, then live settings writes). */
+    get config(): ResolvedHeadroomConfig;
     /** Per-process cumulative counters. */
     readonly stats: HeadroomStats;
-    private readonly _transport;
+    private runtime;
+    private _transport;
     private readonly seen;
     private enabled;
     private mode;
@@ -79,6 +80,15 @@ export declare class HeadroomCompressor extends Service {
     getMode(): HeadroomMode;
     /** Whether a proxy transport is configured and usable. */
     get ready(): boolean;
+    /**
+     * Register the `headroom` settings namespace so configuration UIs can read
+     * and write it (persisted by the settings-file provider). Row config is the
+     * composition `base`; user settings layer on top; live writes are applied
+     * to the running service through {@link applySettings}.
+     */
+    private installSettingsSection;
+    /** Re-resolve and live-apply a new configuration (settings write or attach). */
+    applySettings(next: ResolvedHeadroomConfig): void;
     /**
      * Run one compression pass over the current session surface when the gates
      * allow it. Returns `null` when no pass was needed or possible.
