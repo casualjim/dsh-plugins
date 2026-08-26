@@ -241,6 +241,31 @@ importers:
         specifier: ^4.1.8
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.25.12))
 
+  dsh-heimdall-sandbox:
+    dependencies:
+      '@casualjim/heimdall-sandbox':
+        specifier: ^0.1.45
+        version: 0.1.45
+      '@deepseek-ai/cordis':
+        specifier: ^4.0.1
+        version: 4.0.1(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@deepseek-ai/schemastery':
+        specifier: ^3.18.1
+        version: 3.18.1
+    devDependencies:
+      '@deepseek-ai/dsh-sandbox':
+        specifier: ^0.1.1-rc.2
+        version: 0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-llm@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-attachment@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-brand@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-brand@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1)))(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))(@deepseek-ai/dsh-timeout@0.0.1-rc.1(@deepseek-ai/cordis@4.0.1)(@deepseek-ai/dsh-invariants@0.1.1-rc.2(@deepseek-ai/cordis@4.0.1))))(@deepseek-ai/dsh-session@0.1.1-rc.2(7aa81e6d199408b1797f1f80ade57069))
+      '@types/node':
+        specifier: ^22.19.19
+        version: 22.20.1
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.1.8
+        version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.25.12))
+
   dsh-ponytail:
     devDependencies:
       '@deepseek-ai/cordis':
@@ -314,6 +339,28 @@ importers:
         version: 4.1.11(@types/node@22.20.1)(vite@8.2.2(@types/node@22.20.1)(esbuild@0.25.12))
 
 packages:
+
+  '@casualjim/heimdall-sandbox-darwin-arm64@0.1.45':
+    resolution: {integrity: sha512-OkkFjOaFGi69VMKqQrx9Z5z7uTBJIgJaAid/7vB77mbyTtcVxO1NL1/mMGpwSO/BMIV0WQiF3/1aAelTd6346A==}
+    cpu: [arm64]
+    os: [darwin]
+    hasBin: true
+
+  '@casualjim/heimdall-sandbox-linux-arm64@0.1.45':
+    resolution: {integrity: sha512-2UKp+akaUxF/2PzS3A17oMvJn8RGSTUYe7BhM4TUiVq4lC1dPRLC4qDt/VS+3b5jxYgIHMw0P+N3yTnU3jT7LQ==}
+    cpu: [arm64]
+    os: [linux]
+    hasBin: true
+
+  '@casualjim/heimdall-sandbox-linux-x64@0.1.45':
+    resolution: {integrity: sha512-190fcRH8hH0UYgs58VQPmxYpACWa2iE85CgPRIHYBYTQYLEvCBC9EkYTpVPsJYTKXZJvtwkegCsJb3gb52i1vg==}
+    cpu: [x64]
+    os: [linux]
+    hasBin: true
+
+  '@casualjim/heimdall-sandbox@0.1.45':
+    resolution: {integrity: sha512-i3iBdzE0rHtp+2KAc8gswJn57KsPVjQ2JntiYkg02LdK+FSgwk1iVgD0QRT+K+sg10q4e0qEsj4i30POptOT8w==}
+    hasBin: true
 
   '@deepseek-ai/cordis-plugin-include@1.0.6':
     resolution: {integrity: sha512-i1VXrZCbv6tk/iUgedCNjrxxArbWT3IvRZGB5sdqJ3ectnihivXXQbRZ8JJ73DSmAPvlMGmrbtjFAfm10yvXRg==}
@@ -2058,6 +2105,21 @@ packages:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
+
+  '@casualjim/heimdall-sandbox-darwin-arm64@0.1.45':
+    optional: true
+
+  '@casualjim/heimdall-sandbox-linux-arm64@0.1.45':
+    optional: true
+
+  '@casualjim/heimdall-sandbox-linux-x64@0.1.45':
+    optional: true
+
+  '@casualjim/heimdall-sandbox@0.1.45':
+    optionalDependencies:
+      '@casualjim/heimdall-sandbox-darwin-arm64': 0.1.45
+      '@casualjim/heimdall-sandbox-linux-arm64': 0.1.45
+      '@casualjim/heimdall-sandbox-linux-x64': 0.1.45
 
   '@deepseek-ai/cordis-plugin-include@1.0.6(@deepseek-ai/cordis-plugin-loader@1.0.2)(@deepseek-ai/cordis@4.0.1)':
     dependencies:
