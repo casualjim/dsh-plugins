@@ -30,6 +30,25 @@
           - ~/.local/state/hk
           - ~/.cargo/registry
           - ~/Library/pnpm
+          - ~/.config/nvim
+          - ~/.config/openspec
+          - ~/.config/tea
+          - ~/.config/crumbs
+          - ~/.local/share/crumbs
+          - ~/.local/state/mise
+          - ~/.local/share/mise
+          - ~/.cache/ccache
+          - ~/.cache/sccache
+          - ~/.cache/mise
+          - ~/.cache/lindera
+          - ~/.cache/syntastica-parsers
+          - ~/.cache/huggingface
+          - ~/.cache/uv
+          - ~/.local/state/hk
+          - ~/.local/share/pnpm
+          - ~/go
+          - ~/.cache/go-build
+          - ~/.cargo/registry
         deniedPaths:
           # default-private-paths corpus (pi-heimdall useDefaultFilesystemDeny)
           - ~/Private
@@ -84,3 +103,4 @@
           - "!~/.config/tea"
           - "!~/.config/gh"
           - "!~/.npmrc"
+          - "!~/.config/crumbs"
