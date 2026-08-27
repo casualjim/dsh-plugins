@@ -24,7 +24,17 @@ ordered `!negations`); denied beats writable.
     binaryPath: ""            # empty: npm wrapper, then PATH
     extraWritableRoots: []    # beyond the session workspace
     deniedPaths: []           # verbatim heimdall deny syntax
+    projects:                 # optional per-workspace overrides, longest key wins
+      /path/to/project:
+        extraWritableRoots: []
+        deniedPaths: []
 ```
+
+Per-project grants also come from `<workspaceRoot>/.dsh/heimdall.json`
+(`extraWritableRoots`, `deniedPaths`; plain JSON, appended after the global and
+`projects` lists). The file's existence is the opt-in — committing it lets that
+repo widen its own writables to any path not covered by the global deny corpus.
+Global `deniedPaths` still beat every writable. Malformed JSON fails loudly.
 
 ## Notes
 

@@ -77,12 +77,14 @@ describeIfBinary('heimdall-sandbox exec through the provider argv', () => {
     const policyFile = join(cwd, '.policy.json')
     writeFileSync(policyFile, JSON.stringify({
       cwd,
-      command: ['sh', '-c', '(cat secret/key.txt) 2>/dev/null && echo READ || echo MASKED'],
+      // heimdall-sandbox >= 0.2.0 DENIES denied reads (cat errors) instead
+      // of masking them (empty content, exit 0).
+      command: ['sh', '-c', '(cat secret/key.txt) 2>/dev/null && echo READ || echo DENIED'],
       stdio: 'inherit',
       filesystem: { writable: [cwd], deny: [join(cwd, 'secret')] },
     }))
     const result = spawnSync('heimdall-sandbox', ['exec', '--policy', policyFile], { encoding: 'utf-8' })
-    expect(result.stdout.trim()).toBe('MASKED')
+    expect(result.stdout.trim()).toBe('DENIED')
     rmSync(cwd, { recursive: true, force: true })
   })
 })

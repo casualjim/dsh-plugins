@@ -49,6 +49,8 @@
           - ~/go
           - ~/.cache/go-build
           - ~/.cargo/registry
+          - ~/.cargo/bin
+          - ~/.rustup
         deniedPaths:
           # default-private-paths corpus (pi-heimdall useDefaultFilesystemDeny)
           - ~/Private

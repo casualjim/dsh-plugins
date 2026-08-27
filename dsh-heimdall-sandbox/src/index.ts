@@ -18,7 +18,7 @@
  */
 
 import { spawnSync } from 'node:child_process'
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -43,6 +43,20 @@ export interface Config {
    * Deny entries passed to heimdall verbatim: `~/secrets`, absolute paths,
    * ordered `!negations`. Denied beats writable.
    */
+  deniedPaths?: string[]
+  /**
+   * Per-workspace overrides keyed by an exact workspace root or a directory
+   * prefix of it (longest key wins). Both lists append to the global ones;
+   * denied beats writable, and `!` negations carve exceptions back out.
+   * Kept in deployment config on purpose: a file inside the workspace could
+   * be edited by the very code the sandbox confines.
+   */
+  projects?: Record<string, ProjectOverrides>
+}
+
+/** Per-project exception lists, appended to the deployment-wide ones. */
+export interface ProjectOverrides {
+  extraWritableRoots?: string[]
   deniedPaths?: string[]
 }
 
@@ -91,15 +105,65 @@ export function resolveBinaryPath(configured: string | undefined): string {
   )
 }
 
+/**
+ * The override entry whose key is the workspace root itself or a directory
+ * prefix of it; the longest matching key wins.
+ */
+function matchProject(
+  projects: Record<string, ProjectOverrides> | undefined,
+  root: string,
+): ProjectOverrides | undefined {
+  if (!projects) return undefined
+  let best: ProjectOverrides | undefined
+  let bestLength = -1
+  for (const [key, overrides] of Object.entries(projects)) {
+    const prefix = key.endsWith('/') ? key : `${key}/`
+    if ((root === key || root.startsWith(prefix)) && key.length > bestLength) {
+      best = overrides
+      bestLength = key.length
+    }
+  }
+  return best
+}
+
+/**
+ * Per-project grants from `<workspaceRoot>/.dsh/heimdall.json`; `undefined`
+ * when the file is absent. The file IS the opt-in: committing it to a repo
+ * lets that repo widen its own writables to any path not covered by the
+ * global deny corpus (global `deniedPaths` still beat every writable).
+ * Malformed content fails loudly — a silently ignored sandbox grant is a
+ * misconfiguration, not a fallback.
+ */
+function readWorkspacePolicy(root: string): ProjectOverrides | undefined {
+  const path = join(root, '.dsh', 'heimdall.json')
+  let raw: string
+  try {
+    raw = readFileSync(path, 'utf-8')
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw new Error(`heimdall-sandbox: cannot read ${path}: ${(err as Error).message}`)
+  }
+  try {
+    return JSON.parse(raw) as ProjectOverrides
+  } catch {
+    throw new Error(`heimdall-sandbox: invalid JSON in ${path}`)
+  }
+}
+
 export class HeimdallSandboxProvider extends SandboxProvider {
   // Inline schema call: the config catalog walks `static Config` statically.
   static Config: z<Config> = z.object({
     binaryPath: z.string(),
     extraWritableRoots: z.array(z.string()),
     deniedPaths: z.array(z.string()),
+    projects: z.dict(z.object({
+      extraWritableRoots: z.array(z.string()),
+      deniedPaths: z.array(z.string()),
+    })),
   })
 
   private readonly options: PolicyOptions
+  private readonly projects: Record<string, ProjectOverrides> | undefined
   private readonly binaryPath: string
   private readonly policyDirs = new Set<string>()
   /** Test seam + explicit teardown, mirroring the local provider's internals idiom. */
@@ -115,6 +179,7 @@ export class HeimdallSandboxProvider extends SandboxProvider {
       extraWritableRoots: config.extraWritableRoots as string[],
       deniedPaths: config.deniedPaths as string[],
     }
+    this.projects = config.projects as Record<string, ProjectOverrides> | undefined
     const dispose = (): void => {
       for (const dir of this.policyDirs) {
         try {
@@ -132,7 +197,23 @@ export class HeimdallSandboxProvider extends SandboxProvider {
   }
 
   confine(argv: readonly string[], policy: SandboxPolicy): ConfinedArgv {
-    const document = buildPolicyDocument(argv, policy, this.options)
+    const override = matchProject(this.projects, policy.workspaceRoot)
+    const workspace = readWorkspacePolicy(policy.workspaceRoot)
+    const options: PolicyOptions = override || workspace
+      ? {
+          extraWritableRoots: [
+            ...(this.options.extraWritableRoots ?? []),
+            ...(override?.extraWritableRoots ?? []),
+            ...(workspace?.extraWritableRoots ?? []),
+          ],
+          deniedPaths: [
+            ...(this.options.deniedPaths ?? []),
+            ...(override?.deniedPaths ?? []),
+            ...(workspace?.deniedPaths ?? []),
+          ],
+        }
+      : this.options
+    const document = buildPolicyDocument(argv, policy, options)
     const dir = mkdtempSync(join(tmpdir(), 'dsh-heimdall-'))
     this.policyDirs.add(dir)
     const policyFile = join(dir, 'policy.json')
