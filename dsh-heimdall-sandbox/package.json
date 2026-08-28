@@ -1,6 +1,6 @@
 {
   "name": "dsh-heimdall-sandbox",
-  "description": "DSH sandbox provider delegating confinement to the heimdall-sandbox binary: mode-to-policy-JSON mapping with deployment-wide extra writables and deny paths",
+  "description": "DSH sandbox provider delegating confinement to the heimdall-sandbox binary: mode-to-policy-JSON mapping over the pi-heimdall policy fragment format",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -26,7 +26,7 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@casualjim/heimdall-sandbox": "^0.2.1",
+    "@casualjim/heimdall-sandbox": "0.2.4",
     "@deepseek-ai/cordis": "^4.0.1",
     "@deepseek-ai/schemastery": "^3.18.1"
   },

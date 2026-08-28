@@ -1,17 +1,23 @@
 /**
  * Build one heimdall-sandbox policy document from a resolved DSH
- * {@link SandboxPolicy} plus the provider's deployment-wide exceptions.
+ * {@link SandboxPolicy} plus the provider's configured policy fragment
+ * (deployment-wide, per-project, and per-workspace layers merged upstream).
  *
- * Mode mapping (heimdall >= 0.1.45):
+ * Mode mapping (heimdall >= 0.1.45, deny semantics >= 0.2.0):
  * - `read-only`: a DECLARED but empty `filesystem` block confines read-only.
  *   The profile keeps cwd/HOME/platform reads and grants its platform temp
  *   areas — slightly wider than DSH's read-only promise; deployments that
- *   want the DSH-exact shape add those dirs to `deniedPaths`.
+ *   want the DSH-exact shape add those dirs to `filesystem.deny`.
  * - `workspace-write`: explicit writable list = workspace root + configured
  *   extra roots. Platform temps come from heimdall's profile defaults,
  *   matching DSH's `writableRoots` promise without restating them.
- * - Deny paths pass through verbatim in heimdall's own syntax (tilde
- *   expansion and ordered `!` negations included) — no reinterpretation.
+ * - Denied reads FAIL (EPERM) instead of masking; deny paths pass through
+ *   verbatim in heimdall's own syntax (tilde expansion and ordered `!`
+ *   negations included) — no reinterpretation.
+ *
+ * The remaining heimdall policy surface (network, proc, env, agent sockets,
+ * virtual path mounts) passes through verbatim when configured and is simply
+ * absent — binary defaults — when not.
  *
  * @module dsh-heimdall-sandbox/policy
  */
@@ -19,7 +25,7 @@
  * Map one confined call onto its heimdall-sandbox policy document.
  * @param argv - the exact caller argv (program plus arguments).
  * @param policy - the resolved per-call file-effect policy.
- * @param options - the provider's configured exception lists.
+ * @param options - the merged policy fragment from all configured layers.
  * @returns the policy document to serialize for `exec --policy`.
  */
 export function buildPolicyDocument(argv, policy, options = {}) {
@@ -28,10 +34,13 @@ export function buildPolicyDocument(argv, policy, options = {}) {
     }
     const filesystem = {};
     if (policy.mode === 'workspace-write') {
-        filesystem.writable = [policy.workspaceRoot, ...(options.extraWritableRoots ?? [])];
+        filesystem.writable = [policy.workspaceRoot, ...(options.filesystem?.writable ?? [])];
     }
-    if (options.deniedPaths?.length) {
-        filesystem.deny = [...options.deniedPaths];
+    if (options.filesystem?.deny?.length) {
+        filesystem.deny = [...options.filesystem.deny];
+    }
+    if (options.filesystem?.virtual && Object.keys(options.filesystem.virtual).length) {
+        filesystem.virtual = { ...options.filesystem.virtual };
     }
     return {
         cwd: policy.workspaceRoot,
@@ -39,5 +48,11 @@ export function buildPolicyDocument(argv, policy, options = {}) {
         // inherit: the consumer owns the child's pipes; heimdall passes stdio through.
         stdio: 'inherit',
         filesystem,
+        ...(options.network !== undefined && { network: options.network }),
+        ...(options.proc !== undefined && { proc: options.proc }),
+        ...(options.env && { env: { ...options.env } }),
+        ...(options.sshAgent !== undefined && { sshAgent: options.sshAgent }),
+        ...(options.gpgAgent !== undefined && { gpgAgent: options.gpgAgent }),
+        ...(options.ageAgent !== undefined && { ageAgent: options.ageAgent }),
     };
 }

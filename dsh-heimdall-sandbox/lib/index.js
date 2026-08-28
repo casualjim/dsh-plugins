@@ -9,15 +9,23 @@
  * argv and cwd travel inside the document because heimdall rejects positional
  * commands combined with `--policy`; stdio passes through with `inherit`.
  *
+ * The full pi-heimdall policy fragment (network, proc, env, filesystem
+ * deny/writable/virtual, SSH/GnuPG/age agent sockets) is the config format,
+ * verbatim — no renamed aliases. It merges from the deployment config, the
+ * `projects` map, and the `sandbox` section of the per-workspace
+ * `.dsh/heimdall.json` file (a multi-plugin file shared with dsh-heimdall's
+ * `commandPolicies`) — lists append, scalars take the most specific layer
+ * that defines them, absent fields stay at binary defaults.
+ *
  * Enforcement is reported as `full`: macOS runs Seatbelt, Linux bubblewrap,
- * both closed-by-default in heimdall-sandbox 0.1.45. Runner failures are the
- * binary's misconfiguration contract (exit 2 + `invalid policy: `) plus the
- * underlying runner dialects passing through.
+ * both closed-by-default. Since 0.2.0 denied reads FAIL (EPERM) instead of
+ * masking. Runner failures are the binary's misconfiguration contract
+ * (exit 2 + `invalid policy: `) plus the underlying runner dialects.
  *
  * @module dsh-heimdall-sandbox
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -70,14 +78,142 @@ export function resolveBinaryPath(configured) {
     }
     throw new Error('heimdall-sandbox binary not found: configure sandbox.binaryPath, install @casualjim/heimdall-sandbox, or put heimdall-sandbox on PATH');
 }
+/**
+ * The override entry whose key is the workspace root itself or a directory
+ * prefix of it; the longest matching key wins.
+ */
+function matchProject(projects, root) {
+    if (!projects)
+        return undefined;
+    let best;
+    let bestLength = -1;
+    for (const [key, overrides] of Object.entries(projects)) {
+        const prefix = key.endsWith('/') ? key : `${key}/`;
+        if ((root === key || root.startsWith(prefix)) && key.length > bestLength) {
+            best = overrides;
+            bestLength = key.length;
+        }
+    }
+    return best;
+}
+/**
+ * The `sandbox` section of the multi-plugin `<workspaceRoot>/.dsh/heimdall.json`
+ * (pi-heimdall {@link PolicyOptions} fragment, plain JSON); `undefined` when
+ * the file or the section is absent. The file IS the opt-in: committing it to
+ * a repo lets that repo widen its own writables to any path not covered by
+ * the global deny corpus (global deny still beats every writable). Malformed
+ * content fails loudly — a silently ignored sandbox grant is a
+ * misconfiguration, not a fallback.
+ */
+function readWorkspacePolicy(root) {
+    const path = join(root, '.dsh', 'heimdall.json');
+    let raw;
+    try {
+        raw = readFileSync(path, 'utf-8');
+    }
+    catch (err) {
+        if (err.code === 'ENOENT')
+            return undefined;
+        throw new Error(`heimdall-sandbox: cannot read ${path}: ${err.message}`);
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    }
+    catch {
+        throw new Error(`heimdall-sandbox: invalid JSON in ${path}`);
+    }
+    if (parsed.sandbox === undefined)
+        return undefined;
+    if (typeof parsed.sandbox !== 'object' || parsed.sandbox === null || Array.isArray(parsed.sandbox)) {
+        throw new Error(`heimdall-sandbox: ${path}: "sandbox" section must be a policy fragment object`);
+    }
+    return parsed.sandbox;
+}
+/**
+ * Fold policy layers most-general first: lists concatenate, virtual mounts
+ * merge by key, scalars (`network`, `proc`, agent flags, env lists) take
+ * the most specific layer that defines them. Absent fields stay absent —
+ * the binary decides their defaults.
+ */
+export function mergeOptions(...layers) {
+    const merged = {};
+    for (const layer of layers) {
+        if (!layer)
+            continue;
+        if (layer.filesystem?.deny?.length) {
+            merged.filesystem = {
+                ...merged.filesystem,
+                deny: [...(merged.filesystem?.deny ?? []), ...layer.filesystem.deny],
+            };
+        }
+        if (layer.filesystem?.writable?.length) {
+            merged.filesystem = {
+                ...merged.filesystem,
+                writable: [...(merged.filesystem?.writable ?? []), ...layer.filesystem.writable],
+            };
+        }
+        if (layer.filesystem?.virtual && Object.keys(layer.filesystem.virtual).length) {
+            merged.filesystem = {
+                ...merged.filesystem,
+                virtual: { ...merged.filesystem?.virtual, ...layer.filesystem.virtual },
+            };
+        }
+        const allow = [...(merged.env?.allow ?? []), ...(layer.env?.allow ?? [])];
+        const deny = [...(merged.env?.deny ?? []), ...(layer.env?.deny ?? [])];
+        if (allow.length || deny.length) {
+            merged.env = { ...(allow.length && { allow }), ...(deny.length && { deny }) };
+        }
+        if (layer.network !== undefined)
+            merged.network = layer.network;
+        if (layer.proc !== undefined)
+            merged.proc = layer.proc;
+        if (layer.sshAgent !== undefined)
+            merged.sshAgent = layer.sshAgent;
+        if (layer.gpgAgent !== undefined)
+            merged.gpgAgent = layer.gpgAgent;
+        if (layer.ageAgent !== undefined)
+            merged.ageAgent = layer.ageAgent;
+    }
+    return merged;
+}
 export class HeimdallSandboxProvider extends SandboxProvider {
     // Inline schema call: the config catalog walks `static Config` statically.
     static Config = z.object({
         binaryPath: z.string(),
-        extraWritableRoots: z.array(z.string()),
-        deniedPaths: z.array(z.string()),
+        filesystem: z.object({
+            deny: z.array(z.string()),
+            writable: z.array(z.string()),
+            virtual: z.dict(z.string()),
+        }),
+        network: z.string(),
+        proc: z.string(),
+        env: z.object({
+            allow: z.array(z.string()),
+            deny: z.array(z.string()),
+        }),
+        sshAgent: z.boolean(),
+        gpgAgent: z.boolean(),
+        ageAgent: z.boolean(),
+        projects: z.dict(z.object({
+            filesystem: z.object({
+                deny: z.array(z.string()),
+                writable: z.array(z.string()),
+                virtual: z.dict(z.string()),
+            }),
+            network: z.string(),
+            proc: z.string(),
+            env: z.object({
+                allow: z.array(z.string()),
+                deny: z.array(z.string()),
+            }),
+            sshAgent: z.boolean(),
+            gpgAgent: z.boolean(),
+            ageAgent: z.boolean(),
+        })),
     });
     options;
+    projects;
     binaryPath;
     policyDirs = new Set();
     /** Test seam + explicit teardown, mirroring the local provider's internals idiom. */
@@ -88,10 +224,9 @@ export class HeimdallSandboxProvider extends SandboxProvider {
             throw new Error(`heimdall-sandbox provider supports darwin and linux, not ${process.platform}`);
         }
         this.binaryPath = resolveBinaryPath(config.binaryPath || undefined);
-        this.options = {
-            extraWritableRoots: config.extraWritableRoots,
-            deniedPaths: config.deniedPaths,
-        };
+        const { binaryPath: _b, projects: _p, ...fragment } = config;
+        this.options = fragment;
+        this.projects = config.projects;
         const dispose = () => {
             for (const dir of this.policyDirs) {
                 try {
@@ -109,7 +244,10 @@ export class HeimdallSandboxProvider extends SandboxProvider {
         ctx.effect(() => dispose);
     }
     confine(argv, policy) {
-        const document = buildPolicyDocument(argv, policy, this.options);
+        const override = matchProject(this.projects, policy.workspaceRoot);
+        const workspace = readWorkspacePolicy(policy.workspaceRoot);
+        const options = mergeOptions(this.options, override, workspace);
+        const document = buildPolicyDocument(argv, policy, options);
         const dir = mkdtempSync(join(tmpdir(), 'dsh-heimdall-'));
         this.policyDirs.add(dir);
         const policyFile = join(dir, 'policy.json');

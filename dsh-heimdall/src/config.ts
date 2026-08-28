@@ -1,14 +1,14 @@
 /**
  * Heimdall config loading for DSH: row config (from the `dsh-heimdall` patch
- * entry) deep-merged over a project-level `.pi/heimdall.jsonc` at the session
- * workspace root. Ported from pi-heimdall's heimdall-config.ts.
+ * entry) deep-merged over the DSH-native `<workspaceRoot>/.dsh/heimdall.json`
+ * at the session workspace root. Same file contract as the
+ * dsh-heimdall-sandbox provider.
  *
  * @module dsh-heimdall/config
  */
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { parse, type ParseError } from 'jsonc-parser'
 
 export interface CommandPolicy {
   name: string
@@ -42,9 +42,8 @@ export interface LoadedConfig {
 
 function parseConfigText(raw: string): Config | null {
   try {
-    const errors: ParseError[] = []
-    const parsed = parse(raw, errors, { allowTrailingComma: true })
-    if (errors.length === 0 && parsed && typeof parsed === 'object') return parsed as Config
+    const parsed: unknown = JSON.parse(raw)
+    if (parsed && typeof parsed === 'object') return parsed as Config
   } catch {
     // Parse error — fall through.
   }
@@ -81,23 +80,21 @@ export function deepMerge(base: Config, overrides: Config): Config {
   return result as Config
 }
 
-function projectConfigPath(workspaceRoot: string): string | undefined {
-  const dir = join(workspaceRoot, '.pi')
-  const jsonc = join(dir, 'heimdall.jsonc')
-  if (existsSync(jsonc)) return jsonc
-  const json = join(dir, 'heimdall.json')
-  if (existsSync(json)) return json
-  return undefined
+/** The DSH-native workspace config file. */
+function configPath(workspaceRoot: string): string {
+  return join(workspaceRoot, '.dsh', 'heimdall.json')
 }
 
 /**
- * Merge the row config with the project-level config at `workspaceRoot` and
- * fold the `disabled` array into a set for per-call checks.
+ * Merge the row config with the DSH-native workspace file at
+ * `workspaceRoot` and fold the `disabled` array into a set for per-call
+ * checks. The workspace file overrides scalars and appends arrays, so
+ * per-repo `commandPolicies` accumulate on top of the deployment config.
  */
 export function loadConfig(workspaceRoot: string | undefined, rowConfig: Config): LoadedConfig {
   let config: Config = { ...rowConfig }
   if (workspaceRoot) {
-    const project = loadConfigFile(projectConfigPath(workspaceRoot))
+    const project = loadConfigFile(configPath(workspaceRoot))
     if (project) config = deepMerge(config, project)
   }
   const disabled = new Set(config.disabled ?? [])

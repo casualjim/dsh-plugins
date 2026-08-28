@@ -32,10 +32,11 @@ Restart the profile for the host row to activate.
 
 ## Configuration
 
-Row config (in `cordis.patch.yml`) is deep-merged over the project-level
-`.pi/heimdall.jsonc` at the session workspace root (`.json` fallback; JSONC
-comments and trailing commas allowed). Later levels override earlier values
-and append arrays.
+Row config (in `cordis.patch.yml`) is deep-merged over the DSH-native
+`<workspaceRoot>/.dsh/heimdall.json` (plain JSON) at the session workspace
+root — the same file the dsh-heimdall-sandbox provider reads. The workspace
+file overrides scalars and appends arrays, so per-repo `commandPolicies`
+accumulate on top of the deployment config.
 
 ```jsonc
 {
@@ -48,7 +49,7 @@ and append arrays.
 
 ### command-policy-guard
 
-Repo-specific command policies from `.pi/heimdall.jsonc`:
+Repo-specific command policies from `<workspaceRoot>/.dsh/heimdall.json`:
 
 ```jsonc
 {

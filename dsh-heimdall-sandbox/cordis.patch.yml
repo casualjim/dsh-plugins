@@ -2,6 +2,10 @@
 # a match guard, not an override (dsh-app-boot applyEntryPatches skips the
 # patch on mismatch). Instead: disable the base provider row and insert this
 # package as a new row providing the same `sandbox` service.
+#
+# Defaults mirror pi-heimdall's effective config: the generated default deny
+# corpus (useDefaultFilesystemDeny) + the user-level ~/.pi/agent/heimdall.json
+# (env deny globs, negation carve-outs, writable list, network: host).
 - id: sandbox
   disabled: true
 
@@ -10,99 +14,92 @@
       name: dsh-heimdall-sandbox
       config:
         binaryPath: ""
-        extraWritableRoots:
-          - ~/github
-          - ~/wagyu
-          - ~/.npm
-          - ~/.pi
-          - ~/.lbdb
-          - ~/.local/state/mise
-          - ~/.local/share/mise
-          - ~/.cache/codebase-memory-mcp
-          - ~/.cache/gh
-          - ~/Library/Caches/Mozilla.sccache
-          - ~/Library/Caches/mise
-          - ~/Library/Caches/hk
-          - "~/Library/Application Support/crumbs"
-          - ~/.cache/lindera
-          - ~/.cache/syntastica-parsers
-          - ~/.cache/huggingface
-          - ~/.local/state/hk
-          - ~/.cargo/registry
-          - ~/Library/pnpm
-          - ~/.config/nvim
-          - ~/.config/openspec
-          - ~/.config/tea
-          - ~/.config/crumbs
-          - ~/.local/share/crumbs
-          - ~/.local/state/mise
-          - ~/.local/share/mise
-          - ~/.cache/ccache
-          - ~/.cache/sccache
-          - ~/.cache/mise
-          - ~/.cache/lindera
-          - ~/.cache/syntastica-parsers
-          - ~/.cache/huggingface
-          - ~/.cache/uv
-          - ~/.local/state/hk
-          - ~/.local/share/pnpm
-          - ~/go
-          - ~/.cache/go-build
-          - ~/.cargo/registry
-          - ~/.cargo/bin
-          - ~/.rustup
-        deniedPaths:
-          # default-private-paths corpus (pi-heimdall useDefaultFilesystemDeny)
-          - ~/Private
-          - ~/.ssh
-          - ~/.config
-          - ~/.aws
-          - ~/.azure
-          - ~/.gcloud
-          - ~/.oci
-          - ~/.kube
-          - ~/.docker
-          - ~/.gnupg
-          - ~/.sops
-          - ~/.age
-          - ~/.password-store
-          - ~/.terraform.d
-          - ~/.vault-token
-          - ~/.netrc
-          - ~/.npmrc
-          - ~/.pypirc
-          - ~/.cargo/credentials
-          - "~/.cargo/credentials.toml"
-          # AI coding tools (API keys commonly stored here)
-          - ~/.claude
-          - ~/.codex
-          - ~/.forge
-          - ~/.cursor
-          - ~/.windsurf
-          - ~/.antigravity
-          - ~/.kiro
-          - ~/.augment
-          - ~/.zed
-          - ~/.aider
-          - ~/.gemini
-          - ~/.continue
-          - ~/.codeium
-          - ~/.openai
-          - ~/.anthropic
-          # Editor / IDE configs (stored auth tokens)
-          - ~/.vscode
-          - ~/.vscode-server
-          - ~/.code
-          - "~/.config/JetBrains"
-          - "~/.local/share/JetBrains"
-          - ~/.config/nvim
-          - "~/.local/share/nvim"
-          - ~/.vim
-          - ~/.viminfo
-          # negation exceptions (heimdall.json deny array)
-          - "!~/.config/mise"
-          - "!~/.config/tin"
-          - "!~/.config/tea"
-          - "!~/.config/gh"
-          - "!~/.npmrc"
-          - "!~/.config/crumbs"
+        network: host
+        env:
+          deny:
+            - "*_TOKEN"
+            - "*_SECRET"
+            - "*_PASSWORD"
+            - "*_KEY"
+        filesystem:
+          writable:
+            - ~/github
+            - ~/wagyu
+            - ~/.npm
+            - ~/.pi
+            - ~/.config/nvim
+            - ~/.config/openspec
+            - ~/.config/tea
+            - ~/.config/crumbs
+            - ~/.local/share/crumbs
+            - ~/.local/state/mise
+            - ~/.local/share/mise
+            - ~/.cache/ccache
+            - ~/.cache/sccache
+            - ~/.cache/mise
+            - ~/.cache/lindera
+            - ~/.cache/syntastica-parsers
+            - ~/.cache/huggingface
+            - ~/.cache/uv
+            - ~/.local/state/hk
+            - ~/.local/share/pnpm
+            - ~/go
+            - ~/.cache/go-build
+            - ~/.cargo/registry
+            - ~/.rustup
+            - ~/.cargo/git
+            - ~/.cargo/binstall
+            - ~/.cargo/bin
+          deny:
+            # pi-heimdall DEFAULT_PRIVATE_PATHS corpus (useDefaultFilesystemDeny)
+            - ~/Private
+            - ~/.ssh
+            - ~/.config
+            - ~/.aws
+            - ~/.azure
+            - ~/.gcloud
+            - ~/.oci
+            - ~/.kube
+            - ~/.docker
+            - ~/.gnupg
+            - ~/.sops
+            - ~/.age
+            - ~/.password-store
+            - ~/.terraform.d
+            - ~/.vault-token
+            - ~/.netrc
+            - ~/.npmrc
+            - ~/.pypirc
+            - ~/.cargo/credentials
+            - "~/.cargo/credentials.toml"
+            # AI coding tools (API keys commonly stored here)
+            - ~/.claude
+            - ~/.codex
+            - ~/.forge
+            - ~/.cursor
+            - ~/.windsurf
+            - ~/.antigravity
+            - ~/.kiro
+            - ~/.augment
+            - ~/.zed
+            - ~/.aider
+            - ~/.gemini
+            - ~/.continue
+            - ~/.codeium
+            - ~/.openai
+            - ~/.anthropic
+            # Editor / IDE configs (stored auth tokens)
+            - ~/.vscode
+            - ~/.vscode-server
+            - ~/.code
+            - "~/.config/JetBrains"
+            - "~/.local/share/JetBrains"
+            - ~/.config/nvim
+            - "~/.local/share/nvim"
+            - ~/.vim
+            - ~/.viminfo
+            # negation carve-outs from ~/.pi/agent/heimdall.json (ordered ! wins)
+            - "!~/.config/crumbs"
+            - "!~/.config/mise"
+            - "!~/.config/tea"
+            - "!~/.config/gh"

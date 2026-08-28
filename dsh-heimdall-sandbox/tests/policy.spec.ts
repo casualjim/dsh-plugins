@@ -28,17 +28,17 @@ describe('buildPolicyDocument', () => {
     })
   })
 
-  it('workspace-write: configured extra roots join the workspace root', () => {
+  it('workspace-write: configured writable roots join the workspace root', () => {
     const doc = buildPolicyDocument(['cargo', 'build'], WW, {
-      extraWritableRoots: ['~/github', '~/.local/share/mise'],
+      filesystem: { writable: ['~/github', '~/.local/share/mise'] },
     })
     expect(doc.filesystem.writable).toEqual(['/ws', '~/github', '~/.local/share/mise'])
   })
 
-  it('deny paths pass through verbatim in heimdall syntax, any mode', () => {
+  it('deny entries pass through verbatim in pi-heimdall syntax, any mode', () => {
     for (const policy of [RO, WW]) {
       const doc = buildPolicyDocument(['cat', '.env'], policy, {
-        deniedPaths: ['~/.ssh', '!~/.config/mise', '/secrets'],
+        filesystem: { deny: ['~/.ssh', '!~/.config/mise', '/secrets'] },
       })
       expect(doc.filesystem.deny).toEqual(['~/.ssh', '!~/.config/mise', '/secrets'])
     }

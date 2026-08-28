@@ -1,8 +1,9 @@
 /**
- * Exec-level verification against the real heimdall-sandbox binary, skipped
- * wherever the binary is not installed. Fixture roots live under the repo's
- * target/ — OUTSIDE heimdall's always-writable platform temp grants — so a
- * denied write proves confinement rather than a grant.
+ * Exec-level verification against the real heimdall-sandbox binary, resolved
+ * the same way the provider resolves it (npm wrapper, then PATH). Always
+ * runs — no skip gates. Fixture roots live under the repo's target/ —
+ * OUTSIDE heimdall's always-writable platform temp grants — so a denied
+ * write proves confinement rather than a grant.
  */
 
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -10,23 +11,15 @@ import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { HeimdallSandboxProvider } from '../src/index.ts'
+import { HeimdallSandboxProvider, resolveBinaryPath } from '../src/index.ts'
+
+const BIN = resolveBinaryPath(undefined)
 
 function fixtureDir(name: string): string {
   const dir = join(process.cwd(), 'target', `${name}-${process.pid}-${Math.random().toString(36).slice(2)}`)
   mkdirSync(dir, { recursive: true })
   return dir
 }
-
-function binaryAvailable(): boolean {
-  try {
-    return spawnSync('heimdall-sandbox', ['--version'], { timeout: 10_000 }).status === 0
-  } catch {
-    return false
-  }
-}
-
-const describeIfBinary = binaryAvailable() ? describe : describe.skip
 
 async function provider() {
   const ctx = new Context()
@@ -40,7 +33,7 @@ function run(sandbox: HeimdallSandboxProvider, argv: string[], mode: 'read-only'
   return spawnSync(confined.argv[0]!, confined.argv.slice(1), { encoding: 'utf-8' })
 }
 
-describeIfBinary('heimdall-sandbox exec through the provider argv', () => {
+describe('heimdall-sandbox exec through the provider argv', () => {
   it('read-only: declared-empty filesystem keeps reads and denies cwd writes', async () => {
     const cwd = fixtureDir('read-only')
     writeFileSync(join(cwd, 'seed.txt'), 'data')
@@ -68,11 +61,11 @@ describeIfBinary('heimdall-sandbox exec through the provider argv', () => {
     }
   })
 
-  it('deniedPaths carve secrets out of an otherwise writable tree', async () => {
+  it('filesystem.deny carves secrets out of an otherwise writable tree', async () => {
     const cwd = fixtureDir('deny-carve')
     mkdirSync(join(cwd, 'secret'), { recursive: true })
     writeFileSync(join(cwd, 'secret', 'key.txt'), 'topsecret')
-    // The document shape is exactly what confine() emits for deniedPaths
+    // The document shape is exactly what confine() emits for filesystem.deny
     // config; exercised directly so the test needs no second provider.
     const policyFile = join(cwd, '.policy.json')
     writeFileSync(policyFile, JSON.stringify({
@@ -83,7 +76,7 @@ describeIfBinary('heimdall-sandbox exec through the provider argv', () => {
       stdio: 'inherit',
       filesystem: { writable: [cwd], deny: [join(cwd, 'secret')] },
     }))
-    const result = spawnSync('heimdall-sandbox', ['exec', '--policy', policyFile], { encoding: 'utf-8' })
+    const result = spawnSync(BIN, ['exec', '--policy', policyFile], { encoding: 'utf-8' })
     expect(result.stdout.trim()).toBe('DENIED')
     rmSync(cwd, { recursive: true, force: true })
   })

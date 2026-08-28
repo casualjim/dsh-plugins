@@ -1,4 +1,8 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { loadConfig } from '../src/config.ts'
 import { isDotenvPath } from '../src/guards/env-protect.ts'
 import { getKubectlBlockReason } from '../src/guards/kubectl.ts'
 import { getSopsBlockReason } from '../src/guards/sops.ts'
@@ -97,6 +101,36 @@ describe('splitShellLines', () => {
   })
   it('drops line comments', () => {
     expect(splitShellLines('echo hi # note\ncargo test')).toBe('echo hi ;cargo test')
+  })
+})
+
+describe('loadConfig', () => {
+  const mk = (root: string, rel: string, content: string) => {
+    const p = join(root, ...rel.split('/'))
+    mkdirSync(dirname(p), { recursive: true })
+    writeFileSync(p, content)
+  }
+
+  it('merges .dsh/heimdall.json over the row config', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-cfg-'))
+    mk(root, '.dsh/heimdall.json', JSON.stringify({
+      disabled: ['sops-secret-guard'],
+      commandPolicies: [{ name: 'no-cargo-test', blocked: ['cargo', 'test'], message: 'Use mise test.' }],
+    }))
+
+    const loaded = loadConfig(root, { commandPolicies: [{ name: 'row-deny', blocked: ['terraform'], message: 'no' }] })
+    expect(loaded.config.commandPolicies?.map((p) => p.name)).toEqual(['row-deny', 'no-cargo-test'])
+    expect([...loaded.disabled]).toEqual(['sops-secret-guard'])
+
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('falls back to row config when no workspace file exists', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-cfg-'))
+    const loaded = loadConfig(root, { commandPolicies: [{ name: 'row-only', blocked: ['rm'], message: 'no rm' }] })
+    expect(loaded.config.commandPolicies?.map((p) => p.name)).toEqual(['row-only'])
+
+    rmSync(root, { recursive: true, force: true })
   })
 })
 
