@@ -1,0 +1,614 @@
+[
+ [
+  "本机已安装 dsh-mcp-manager 插件（DSH MCP 管理器）：会话界面右上角浮窗管理 MCP 服务器（全局配置 ~/.dsh/dsh-mcp.json；项目级配置 <项目根>/.dsh/mcp.json，跟随会话切换展示并连接对应项目的服务器；支持 stdio / streamable-http，可粘贴 mcpServers JSON 导入，不预设任何服务器）。已配置服务器的能力清单见会话内的 <available_mcp_servers>（仅描述能力，不代表连接状态）。项目级 MCP 工具经 ws_mcp_list/ws_mcp_search 检索（先 ws_mcp_list 完整盘点服务器与工具，再按需 ws_mcp_detail 查完整 inputSchema），经 ws_mcp_call 调用（先用 ws_mcp_search 检索，再 ws_mcp_call 调用；已知 server/tool 时可直呼免搜索）；全局服务器连接后其工具以 mcp__<server>__<tool> 注册可用。限制：MCP 工具在真实服务器上执行，先确认再操作；stdio 服务器的子进程继承宿主权限；工具结果可能含敏感信息。用户提到「MCP / mcp 服务 / 上下文服务器」时即指本插件，请据此协作。",
+  "The dsh-mcp-manager plugin (DSH MCP manager) is installed on this machine: manage MCP servers from the floating panel in the top-right of the session UI (global config at ~/.dsh/dsh-mcp.json; project-level config at <project-root>/.dsh/mcp.json, following the active session and connecting that project's servers; supports stdio / streamable-http, plus paste-mcpServers-JSON import; no servers are preconfigured). The capability list of configured servers appears in-session under <available_mcp_servers> (describes capabilities only, not live connection state). Project-level MCP tools are discovered via ws_mcp_list/ws_mcp_search (run ws_mcp_list first for a full inventory of servers and tools, then ws_mcp_detail for a full inputSchema as needed) and invoked via ws_mcp_call (search with ws_mcp_search first, then call; call directly without searching when server/tool are already known); once a global server is connected, its tools register as mcp__<server>__<tool>. Limits: MCP tools execute on real servers - confirm before acting; stdio server subprocesses inherit host permissions; tool results may contain sensitive information. When the user mentions MCP / mcp service / context server they mean this plugin; collaborate accordingly."
+ ],
+ [
+  "任务匹配某服务器能力时，先用 `ws_mcp_search` 检索当前工作空间的 MCP 工具，再用 `ws_mcp_call` 调用（server/tool 取自检索结果）。**服务器一律经这些工具访问，不直接调用其 mcp__ 前缀工具**；完整盘点全部服务器与工具清单用 `ws_mcp_list`，查单个工具的完整 inputSchema 用 `ws_mcp_detail`。",
+  "When a task matches a server's capabilities, first search the workspace MCP tools with `ws_mcp_search`, then invoke with `ws_mcp_call` (server/tool come from the search results). **Always access servers through these tools; never call their mcp__-prefixed tools directly**; use `ws_mcp_list` for a full inventory of all servers and tools, and `ws_mcp_detail` for a single tool's full inputSchema."
+ ],
+ [
+  "任务匹配某服务器能力时，直接调用其 `mcp__<server>__<tool>` 工具（具体工具名与参数见工具列表）。",
+  "When a task matches a server's capabilities, call its `mcp__<server>__<tool>` tools directly (exact tool names and parameters are in the tool list)."
+ ],
+ [
+  "本会话已配置以下 MCP 服务器（**仅描述能力，不代表当前连接状态**；服务器在 GUI「MCP」浮窗中连接后，其工具才会注册可用）：",
+  "This session has the following MCP servers configured (**capability descriptions only, not live connection state**; a server's tools register as available only after the server is connected in the GUI MCP panel):"
+ ],
+ [
+  "若某服务器此前可用而现在不可用，请勿反复重试同一工具超过两次，改用其他方式或提示用户检查「MCP」浮窗。",
+  "If a server was available before but is not now, do not retry the same tool more than twice; switch to another approach or ask the user to check the MCP panel."
+ ],
+ [
+  "列出当前工作空间全部 MCP 服务器与每台服务器的完整工具清单（不受检索 limit 截断）。返回服务器全名、工具名与描述，供盘点与后续 ws_mcp_detail / ws_mcp_call 使用。不返回 inputSchema——查单个工具完整 schema 请用 ws_mcp_detail。all 模式下含全局服务器。",
+  "List all MCP servers in the current workspace with each server's full tool list (not truncated by search limits). Returns server full names, tool names and descriptions for inventory and later ws_mcp_detail / ws_mcp_call use. Does not return inputSchema - use ws_mcp_detail for a single tool's complete schema. In all mode, global servers are included."
+ ],
+ [
+  " [toolsTruncated: 工具数已达上限，可调大 perServerLimit 后重试]",
+  " [toolsTruncated: tool count hit the limit; raise perServerLimit and retry]"
+ ],
+ [
+  "（当前工作空间没有 MCP 服务器）",
+  "(no MCP servers in the current workspace)"
+ ],
+ [
+  "\\n（部分服务器工具清单被截断，可按需调大 perServerLimit）",
+  "\\n(some servers' tool lists were truncated; raise perServerLimit as needed)"
+ ],
+ [
+  "ws_mcp_list: 无法确定工作空间，请先选择工作区",
+  "ws_mcp_list: cannot determine workspace; select a workspace first"
+ ],
+ [
+  "ws_mcp_call: 无法确定工作空间，请先选择工作区",
+  "ws_mcp_call: cannot determine workspace; select a workspace first"
+ ],
+ [
+  "ws_mcp_search: 无法确定工作空间，请先选择工作区",
+  "ws_mcp_search: cannot determine workspace; select a workspace first"
+ ],
+ [
+  "ws_mcp_detail: 无法确定工作空间，请先选择工作区",
+  "ws_mcp_detail: cannot determine workspace; select a workspace first"
+ ],
+ [
+  "当前工作空间没有项目级 MCP 配置（可在 <项目根>/.dsh/mcp.json 添加服务器，或切换工作区）",
+  "No project-level MCP config in the current workspace (add servers in <project-root>/.dsh/mcp.json, or switch workspaces)"
+ ],
+ [
+  "当前工作空间没有可用 MCP 服务器（项目级与全局均未发现；若刚添加配置，请稍后重试）",
+  "No available MCP servers in the current workspace (neither project-level nor global found; if you just added config, retry shortly)"
+ ],
+ [
+  "当前工作空间没有可用 MCP 服务器（未配置项目级服务器；若刚添加配置，请稍后重试）",
+  "No available MCP servers in the current workspace (no project-level servers configured; if you just added config, retry shortly)"
+ ],
+ [
+  "按 @<root>/<server> 全名 + 工具裸名精确查询单个 MCP 工具的完整参数 schema（inputSchema：properties/required/enum/description）。供 ws_mcp_call 前核对参数。不做关键词检索——找工具用 ws_mcp_list 或 ws_mcp_search。",
+  "Look up the full parameter schema (inputSchema: properties/required/enum/description) of a single MCP tool by exact @<root>/<server> full name + bare tool name. Use to verify parameters before ws_mcp_call. No keyword search - use ws_mcp_list or ws_mcp_search to find tools."
+ ],
+ [
+  "必须：@<root>/<server> 全名（来自 ws_mcp_list / ws_mcp_search）",
+  "Required: @<root>/<server> full name (from ws_mcp_list / ws_mcp_search)"
+ ],
+ [
+  "必须：远端工具裸名（来自 ws_mcp_list / ws_mcp_search；兼容 mcp__<server>__<tool> 前缀）",
+  "Required: bare remote tool name (from ws_mcp_list / ws_mcp_search; mcp__<server>__<tool> prefix accepted)"
+ ],
+ [
+  "检索当前工作空间的 MCP 工具目录（关键词命中 server 名/工具名/描述/参数名，返回命中条目）。先用本工具检索，再 ws_mcp_call 调用；完整盘点请用 ws_mcp_list（本工具仅关键词检索）。空 query 返回能力摘要表。",
+  "Search the workspace MCP tool catalog (keywords match server names/tool names/descriptions/parameter names; matching entries returned). Search with this tool first, then invoke via ws_mcp_call; use ws_mcp_list for a full inventory (this tool is keyword search only). Empty query returns the capability summary table."
+ ],
+ [
+  "意图/关键词；空则列能力摘要",
+  "Intent/keywords; empty lists the capability summary"
+ ],
+ [
+  "可选：@<root>/<server> 全名过滤",
+  "Optional: filter by @<root>/<server> full name"
+ ],
+ [
+  "返回条数上限（默认 5，上限 10）",
+  "Max entries returned (default 5, cap 10)"
+ ],
+ [
+  "结果是否因 limit 截断（results 达到 limit 时为 true，提示模型可能未列全）",
+  "Whether results were truncated by limit (true when results reached the limit, hinting the list may be incomplete)"
+ ],
+ [
+  "可选：@<root>/<server> 全名或裸名过滤，只列出该服务器的工具（全名 root 不属于当前工作空间 → 抛路由一致性错误）",
+  "Optional: filter by @<root>/<server> full name or bare name to list only that server's tools (a full-name root outside the current workspace throws a routing-consistency error)"
+ ],
+ [
+  "可选：每服务器工具条数上限（默认 ${LIST_DEFAULT_TOOLS_PER_SERVER}，上限 ${LIST_MAX_TOOLS_PER_SERVER}；超过置 toolsTruncated=true，模型可按需调大）",
+  "Optional: per-server tool list cap (default ${LIST_DEFAULT_TOOLS_PER_SERVER}, max ${LIST_MAX_TOOLS_PER_SERVER}; beyond it toolsTruncated=true, the model may raise it as needed)"
+ ],
+ [
+  "工作空间 ${String(v.workspace ?? \"\")}（mode=${String(v.mode ?? \"\")}）：共 ${String(v.totalServers ?? 0)} 台服务器 / ${String(v.totalTools ?? 0)} 个工具",
+  "Workspace ${String(v.workspace ?? \"\")} (mode=${String(v.mode ?? \"\")}): ${String(v.totalServers ?? 0)} servers / ${String(v.totalTools ?? 0)} tools"
+ ],
+ [
+  "ws_mcp_call: server 与 tool 均为必填",
+  "ws_mcp_call: both server and tool are required"
+ ],
+ [
+  "ws_mcp_detail: server 与 tool 均为必填",
+  "ws_mcp_detail: both server and tool are required"
+ ],
+ [
+  "；路由一致性校验失败（防跨空间串台）",
+  "; routing-consistency check failed (prevents cross-workspace bleed)"
+ ],
+ [
+  " 不属于当前工作空间 ",
+  " is not in the current workspace "
+ ],
+ [
+  "ws_mcp_call: 工作空间 ${JSON.stringify(parsed.root)} 无项目级 MCP 配置",
+  "ws_mcp_call: workspace ${JSON.stringify(parsed.root)} has no project-level MCP config"
+ ],
+ [
+  "ws_mcp_list: server ${JSON.stringify(serverFilter)} 不属于当前工作空间（${JSON.stringify(roots)}）",
+  "ws_mcp_list: server ${JSON.stringify(serverFilter)} is not in the current workspace (${JSON.stringify(roots)})"
+ ],
+ [
+  "ws_mcp_detail: server 未连接或未发现：${JSON.stringify(server)}",
+  "ws_mcp_detail: server not connected or not discovered: ${JSON.stringify(server)}"
+ ],
+ [
+  "ws_mcp_detail: server 发现失败：${JSON.stringify(server)}（${catalog.unavailable}）",
+  "ws_mcp_detail: server discovery failed: ${JSON.stringify(server)} (${catalog.unavailable})"
+ ],
+ [
+  "（已被用户禁用）",
+  " (disabled by user)"
+ ],
+ [
+  "（无描述）",
+  "(no description)"
+ ],
+ [
+  "ws_mcp_call: 工具被策略拒绝",
+  "ws_mcp_call: tool denied by policy"
+ ],
+ [
+  "ws_mcp_call: 工具 ${JSON.stringify(`${serverKey}/${tool}`)} 不在 allowTools 白名单内，被策略拒绝",
+  "ws_mcp_call: tool ${JSON.stringify(`${serverKey}/${tool}`)} is not in the allowTools allowlist; denied by policy"
+ ],
+ [
+  "dsh-mcp-manager(${serverName}@${root}): server 已由其他插件（如官方 dsh-mcp-client）注册 mcp__ 工具，跳过本实例连接（防双进程）",
+  "dsh-mcp-manager(${serverName}@${root}): another plugin (e.g. the official dsh-mcp-client) already registered mcp__ tools for this server; skipping this instance's connection (prevents double processes)"
+ ],
+ [
+  "ws_mcp_call: unknown server ${JSON.stringify(fullName)}; 格式应为 @<root>/<server>",
+  "ws_mcp_call: unknown server ${JSON.stringify(fullName)}; expected format @<root>/<server>"
+ ],
+ [
+  "ws_mcp_call: 工作空间 ${JSON.stringify(parsed.root)} 未激活；请先 ws_mcp_search 或 ws_mcp_list",
+  "ws_mcp_call: workspace ${JSON.stringify(parsed.root)} is not activated; run ws_mcp_search or ws_mcp_list first"
+ ],
+ [
+  "ws_mcp_call: server ${JSON.stringify(fullName)} 已被用户禁用；可先在 GUI「MCP」浮窗中重新连接",
+  "ws_mcp_call: server ${JSON.stringify(fullName)} is disabled by the user; reconnect it in the GUI MCP panel first"
+ ],
+ [
+  "ws_mcp_call: 调用超时（${CALL_TIMEOUT_MS}ms），可重试；若反复超时请用 ws_mcp_detail 核对参数或检查服务器状态",
+  "ws_mcp_call: call timed out (${CALL_TIMEOUT_MS}ms); retry allowed. On repeated timeouts, verify parameters with ws_mcp_detail or check the server's status"
+ ],
+ [
+  "ws_mcp_call: 远端工具返回错误：${msgOf(resultObj.content)}；可先用 ws_mcp_detail 核对参数 schema 后重试",
+  "ws_mcp_call: remote tool returned an error: ${msgOf(resultObj.content)}; verify the parameter schema with ws_mcp_detail before retrying"
+ ],
+ [
+  "（提示：本工具目录已过期，schema 可能已变更，请重新 ws_mcp_search）",
+  "(note: this tool catalog entry is stale, the schema may have changed; run ws_mcp_search again)"
+ ],
+ [
+  "ws_mcp_call: ${JSON.stringify(`${parsed.server}/${tool}`)} 调用失败：${msgOf(error)}；可先用 ws_mcp_detail 核对参数 schema，或确认服务器已连接后重试",
+  "ws_mcp_call: ${JSON.stringify(`${parsed.server}/${tool}`)} call failed: ${msgOf(error)}; verify the parameter schema with ws_mcp_detail, or confirm the server is connected and retry"
+ ],
+ [
+  "ws_mcp_detail: tool 不存在：${JSON.stringify(`${server}/${toolName}`)}",
+  "ws_mcp_detail: tool does not exist: ${JSON.stringify(`${server}/${toolName}`)}"
+ ],
+ [
+  "等待连接/发现超时",
+  "timed out waiting for connect/discovery"
+ ],
+ [
+  "运行中",
+  "Running"
+ ],
+ [
+  "连接中",
+  "Connecting"
+ ],
+ [
+  "重连中",
+  "Reconnecting"
+ ],
+ [
+  "未连接",
+  "Disconnected"
+ ],
+ [
+  "已停用",
+  "Disabled"
+ ],
+ [
+  "刷新",
+  "Refresh"
+ ],
+ [
+  "关闭",
+  "Close"
+ ],
+ [
+  "快速接入",
+  "Quick Add"
+ ],
+ [
+  "MCP 管理器",
+  "MCP Manager"
+ ],
+ [
+  "断开",
+  "Disconnect"
+ ],
+ [
+  "启用并连接",
+  "Enable & Connect"
+ ],
+ [
+  "连接",
+  "Connect"
+ ],
+ [
+  "禁用",
+  "Disable"
+ ],
+ [
+  "编辑",
+  "Edit"
+ ],
+ [
+  "删除",
+  "Delete"
+ ],
+ [
+  "操作失败：",
+  "Operation failed: "
+ ],
+ [
+  "保存失败：",
+  "Save failed: "
+ ],
+ [
+  "导入失败：",
+  "Import failed: "
+ ],
+ [
+  "已导入：",
+  "Imported: "
+ ],
+ [
+  "（无）",
+  "(none)"
+ ],
+ [
+  "跳过（已存在）：",
+  "Skipped (already exist): "
+ ],
+ [
+  "删除 MCP 服务器「",
+  "Delete MCP server \""
+ ],
+ [
+  "」？",
+  "\""
+ ],
+ [
+  "还没有配置 MCP 服务器。切到「快速接入」页添加，或粘贴 mcpServers JSON 导入。",
+  "No MCP servers configured yet. Add one on the Quick Add tab, or paste mcpServers JSON to import."
+ ],
+ [
+  "其他",
+  "Others"
+ ],
+ [
+  "添加服务器",
+  "Add Server"
+ ],
+ [
+  "编辑服务器：",
+  "Edit server: "
+ ],
+ [
+  "项目级（<项目>/.dsh/mcp.json，随会话切换）",
+  "Project-level (<project>/.dsh/mcp.json, follows the session)"
+ ],
+ [
+  "全局（~/.dsh/dsh-mcp.json）",
+  "Global (~/.dsh/dsh-mcp.json)"
+ ],
+ [
+  "stdio（本地子进程）",
+  "stdio (local subprocess)"
+ ],
+ [
+  "streamable-http（远程）",
+  "streamable-http (remote)"
+ ],
+ [
+  "归属",
+  "Scope"
+ ],
+ [
+  "传输类型",
+  "Transport"
+ ],
+ [
+  "命令（stdio）",
+  "Command (stdio)"
+ ],
+ [
+  "参数（逗号分隔）",
+  "Arguments (comma-separated)"
+ ],
+ [
+  "环境变量（每行 KEY=[REDACTED] ${ENV} 引用，值为空则继承父环境）",
+  "Environment variables (one KEY=[REDACTED] ${ENV} per line; empty values inherit the parent environment)"
+ ],
+ [
+  "工作目录（可选）",
+  "Working directory (optional)"
+ ],
+ [
+  "可选工作目录",
+  "Optional working directory"
+ ],
+ [
+  "请求头（每行 KEY: VALUE，支持 ${ENV} 引用）",
+  "Headers (one KEY: VALUE per line, ${ENV} references supported)"
+ ],
+ [
+  "启用（保存后立即连接）",
+  "Enabled (connects immediately after save)"
+ ],
+ [
+  "保存",
+  "Save"
+ ],
+ [
+  "取消编辑",
+  "Cancel edit"
+ ],
+ [
+  "粘贴 mcpServers JSON 导入",
+  "Paste mcpServers JSON to import"
+ ],
+ [
+  "导入 JSON",
+  "Import JSON"
+ ],
+ [
+  "服务器名称（唯一，作为 mcp__<name>__ 前缀）",
+  "Server name (unique; becomes the mcp__<name>__ prefix)"
+ ],
+ [
+  "每行 KEY: VALUE，支持 ${ENV} 引用，如\\nAuthorization: Bearer ${CONTEXT7_API_KEY}",
+  "One KEY: VALUE per line, ${ENV} references supported, e.g.\\nAuthorization: Bearer ${CONTEXT7_API_KEY}"
+ ],
+ [
+  "MCP 管理器：加载中…",
+  "MCP Manager: loading…"
+ ],
+ [
+  "已保存——浮窗位置即时生效（无需重启）",
+  "Saved - floating panel position applies immediately (no restart needed)"
+ ],
+ [
+  "MCP 管理器（dsh-mcp-manager）",
+  "MCP Manager (dsh-mcp-manager)"
+ ],
+ [
+  "浮窗位置 / 水平·垂直·空白偏移",
+  "Floating panel position / horizontal, vertical and blank offsets"
+ ],
+ [
+  "锚点",
+  "Anchor"
+ ],
+ [
+  "右上（top-right）",
+  "Top right (top-right)"
+ ],
+ [
+  "左上（top-left）",
+  "Top left (top-left)"
+ ],
+ [
+  "右下（bottom-right）",
+  "Bottom right (bottom-right)"
+ ],
+ [
+  "左下（bottom-left）",
+  "Bottom left (bottom-left)"
+ ],
+ [
+  "水平偏移",
+  "Horizontal offset"
+ ],
+ [
+  "垂直偏移",
+  "Vertical offset"
+ ],
+ [
+  "空白偏移",
+  "Blank offset"
+ ],
+ [
+  "层级基准",
+  "Z-index base"
+ ],
+ [
+  "保存即热更新：宿主经 SSE events 通道广播一变，所有标签页的浮窗即刻原位更新，无需重启 dsh web。",
+  "Save = hot update: the host broadcasts one change over the SSE events channel and every tab's floating panel updates in place instantly - no dsh web restart needed."
+ ],
+ [
+  "保存中…",
+  "Saving…"
+ ],
+ [
+  "浮窗层级基准（1-9000），下拉面板自动取基准+30",
+  "Floating panel z-index base (1-9000); dropdown panels automatically take base+30"
+ ],
+ [
+  "是否启用本插件",
+  "Whether to enable this plugin"
+ ],
+ [
+  "是否向 Agent 宣告插件（能力清单由 <available_mcp_servers> 承担）",
+  "Whether to announce the plugin to the agent (capability list handled by <available_mcp_servers>)"
+ ],
+ [
+  "全局服务器配置路径，留空用默认 <DSH_HOME>/dsh-mcp.json",
+  "Global server config path; leave empty for the default <DSH_HOME>/dsh-mcp.json"
+ ],
+ [
+  "是否注入 MCP 能力目录（<available_mcp_servers>）",
+  "Whether to inject the MCP capability catalog (<available_mcp_servers>)"
+ ],
+ [
+  "目录注入条目上限",
+  "Max entries injected into the catalog"
+ ],
+ [
+  "空描述工具条件拼接自定义描述",
+  "Append custom descriptions for tools with empty descriptions"
+ ],
+ [
+  "工具结果截断字节数",
+  "Tool result truncation size in bytes"
+ ],
+ [
+  "MCP 中间层模式：off=直接注册 mcp__ 工具（默认兼容）；project=项目级走 ws_mcp_search/ws_mcp_call（推荐）；all=全部走中间层",
+  "MCP middleware mode: off = register mcp__ tools directly (default, compatible); project = project-level servers go through ws_mcp_search/ws_mcp_call (recommended); all = everything goes through middleware"
+ ],
+ [
+  "中间层策略：{ allowTools: {<server>: [glob]}, denyTools: {<server>: [glob]} }，server 为裸名",
+  "Middleware policy: { allowTools: {<server>: [glob]}, denyTools: {<server>: [glob]} } where server is the bare name"
+ ],
+ [
+  "首刷失败：",
+  "initial render failed: "
+ ],
+ [
+  "关闭旧 SSE 连接失败：",
+  "failed to close old SSE connection: "
+ ],
+ [
+  "调用当前工作空间的一个 MCP 工具（在真实服务器上执行，先确认再操作）。server/tool 来自 ws_mcp_search 或 ws_mcp_list；参数 schema 用 ws_mcp_detail 查询（已知时可直呼，免搜索）。",
+  "Invoke one MCP tool in the current workspace (executes on a real server - confirm before acting). server/tool come from ws_mcp_search or ws_mcp_list; look up the parameter schema with ws_mcp_detail (call directly without searching when already known)."
+ ],
+ [
+  "必须：@<root>/<server> 全名（来自 ws_mcp_search / ws_mcp_list）",
+  "Required: @<root>/<server> full name (from ws_mcp_search / ws_mcp_list)"
+ ],
+ [
+  "必须：远端工具裸名（来自 ws_mcp_search / ws_mcp_list）",
+  "Required: bare remote tool name (from ws_mcp_search / ws_mcp_list)"
+ ],
+ [
+  "参数，匹配 ws_mcp_detail 返回的 inputSchema（properties/required/enum/description）；拿不准时先用 ws_mcp_detail 核对",
+  "Parameters matching the inputSchema returned by ws_mcp_detail (properties/required/enum/description); verify with ws_mcp_detail first when unsure"
+ ],
+ [
+  "（当前工作空间没有匹配的 MCP 工具）",
+  "(no matching MCP tools in the current workspace)"
+ ],
+ [
+  "\\n（结果已达 limit，可能未列全——可调大 limit 或用 ws_mcp_list 完整盘点）",
+  "\\n(results hit the limit and may be incomplete - raise limit or use ws_mcp_list for a full inventory)"
+ ],
+ [
+  "MCP 服务器集合已变化。**本目录替换此前所有 available_mcp_servers 列表**：",
+  "The MCP server set changed. **This catalog replaces all previous available_mcp_servers lists**:"
+ ],
+ [
+  "目录更新",
+  "Catalog update"
+ ],
+ [
+  "更新",
+  "Updated"
+ ],
+ [
+  "失败",
+  "Failed"
+ ],
+ [
+  "启用",
+  "Enable"
+ ],
+ [
+  "重连",
+  "Reconnect"
+ ],
+ [
+  "项目",
+  "Project"
+ ],
+ [
+  "全局",
+  "Global"
+ ],
+ [
+  "全局会话",
+  "Global session"
+ ],
+ [
+  "项目级",
+  "Project-level"
+ ],
+ [
+  "管理",
+  "Manage"
+ ],
+ [
+  "没有 MCP 服务器，点「管理」添加",
+  "No MCP servers yet - tap Manage to add"
+ ],
+ [
+  "MCP Manager（点击展开）",
+  "MCP Manager (click to expand)"
+ ],
+ [
+  "服务器",
+  "Servers"
+ ],
+ [
+  "插件没生效",
+  "plugin not active"
+ ],
+ [
+  "服务器不可用",
+  "server unavailable"
+ ],
+ [
+  "结果原样投影给 dsh 工具系统（未知 content 类型降级占位符）",
+  "result projected verbatim to the dsh tool system (unknown content types fall back to a placeholder)"
+ ],
+ [
+  "当前工作区",
+  "current workspace"
+ ],
+ [
+  " 不在 allowTools 白名单内，被策略拒绝",
+  " is not in the allowTools allowlist; denied by policy"
+ ],
+ [
+  " 调用失败：",
+  " call failed: "
+ ],
+ [
+  "；可先用 ws_mcp_detail 核对参数 schema，或确认服务器已连接后重试",
+  "; verify the parameter schema with ws_mcp_detail, or confirm the server is connected and retry"
+ ],
+ [
+  " tool 不存在：",
+  " tool does not exist: "
+ ],
+ [
+  "环境变量（每行 KEY=[REDACTED] ",
+  "Environment variables (one KEY=[REDACTED] "
+ ],
+ [
+  " 引用，值为空则继承父环境）",
+  " per line; empty values inherit the parent environment)"
+ ],
+ [
+  "（部分服务器工具清单被截断，可按需调大 perServerLimit）",
+  "(some servers' tool lists were truncated; raise perServerLimit as needed)"
+ ]
+]

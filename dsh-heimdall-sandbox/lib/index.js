@@ -26,7 +26,7 @@
  */
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import z from '@deepseek-ai/schemastery';
@@ -97,16 +97,14 @@ function matchProject(projects, root) {
     return best;
 }
 /**
- * The `sandbox` section of the multi-plugin `<workspaceRoot>/.dsh/heimdall.json`
- * (pi-heimdall {@link PolicyOptions} fragment, plain JSON); `undefined` when
- * the file or the section is absent. The file IS the opt-in: committing it to
- * a repo lets that repo widen its own writables to any path not covered by
- * the global deny corpus (global deny still beats every writable). Malformed
- * content fails loudly — a silently ignored sandbox grant is a
- * misconfiguration, not a fallback.
+ * The `sandbox` section of a multi-plugin heimdall.json file (pi-heimdall
+ * {@link PolicyOptions} fragment, plain JSON); `undefined` when the file or
+ * the section is absent. The file IS the opt-in: committing it lets the repo
+ * widen its own writables to any path not covered by the global deny corpus
+ * (global deny still beats every writable). Malformed content fails loudly —
+ * a silently ignored sandbox grant is a misconfiguration, not a fallback.
  */
-function readWorkspacePolicy(root) {
-    const path = join(root, '.dsh', 'heimdall.json');
+function readPolicyFile(path) {
     let raw;
     try {
         raw = readFileSync(path, 'utf-8');
@@ -129,6 +127,14 @@ function readWorkspacePolicy(root) {
         throw new Error(`heimdall-sandbox: ${path}: "sandbox" section must be a policy fragment object`);
     }
     return parsed.sandbox;
+}
+/** User-global layer: the `sandbox` section of `~/.dsh/heimdall.json`. */
+function readGlobalPolicy() {
+    return readPolicyFile(join(homedir(), '.dsh', 'heimdall.json'));
+}
+/** Per-workspace layer: the `sandbox` section of `<workspaceRoot>/.dsh/heimdall.json`. */
+function readWorkspacePolicy(root) {
+    return readPolicyFile(join(root, '.dsh', 'heimdall.json'));
 }
 /**
  * Fold policy layers most-general first: lists concatenate, virtual mounts
@@ -244,9 +250,14 @@ export class HeimdallSandboxProvider extends SandboxProvider {
         ctx.effect(() => dispose);
     }
     confine(argv, policy) {
+        // Layer order (each merges over the previous): plugin definition +
+        // profile cordis.patch.yaml (already folded into this.options by the
+        // DSH loader), the matched `projects` entry, `~/.dsh/heimdall.json`,
+        // `<workspaceRoot>/.dsh/heimdall.json`.
         const override = matchProject(this.projects, policy.workspaceRoot);
+        const global = readGlobalPolicy();
         const workspace = readWorkspacePolicy(policy.workspaceRoot);
-        const options = mergeOptions(this.options, override, workspace);
+        const options = mergeOptions(this.options, override, global, workspace);
         const document = buildPolicyDocument(argv, policy, options);
         const dir = mkdtempSync(join(tmpdir(), 'dsh-heimdall-'));
         this.policyDirs.add(dir);
