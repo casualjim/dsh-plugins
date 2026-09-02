@@ -13,3 +13,4 @@ dsh plugin --profile web add <path-or-package>
 - `dsh-ponytail` — TODO
 - `dsh-headroom` — Headroom context compression over a configured proxy URL (ported from noheadroom: tool-result compression + /headroom command + headroom_retrieve tool, graceful degrade without proxy)
 - `dsh-pstack` — Pstack skills + Poteto Mode + bundled agent personas (ported from pi-pstack: 44 skills + /poteto-mode + /setup-pstack commands + poteto_agent/comment_sicko subagent tools)
+- `dsh-worktrunk` — worktrunk (`wt`) git worktree management: create/list/remove worktrees, register them as DSH workspaces, sync gitignored files (setup steps live in the repo's `wt.toml` hooks)
