@@ -1,0 +1,9 @@
+# dsh-fleet bundle patch: insert fleet switcher into the web profile roster.
+# Host (exports ".") spawns/supervises the fleetd sidecar (iroh mesh, loopback
+# gateways) and serves /api/dsh-fleet/* status/invite/dial/peers routes.
+# Browser (exports "./client") injects the instance dropdown below the sidebar
+# New Session button; picking a peer navigates the tab to that instance's
+# loopback gateway port.
+- insert:
+    - id: ui-dsh-fleet
+      name: 'dsh-fleet'
