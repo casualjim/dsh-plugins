@@ -6,9 +6,11 @@
   "main": "lib/index.js",
   "scripts": {
     "build": "node scripts/build/clean-lib.ts && tsc -p tsconfig.json && node scripts/build/bundle-host.ts .",
-    "test": "node test/smoke.ts",
+    "test": "node test/smoke.ts && node test/client-slots.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "prepublishOnly": "pnpm run typecheck && pnpm run build && pnpm run test"
+    "prepublishOnly": "pnpm run typecheck && pnpm run build && pnpm run test",
+    "test:mesh": "node test/mesh.ts",
+    "test:client": "node test/client-churn.ts"
   },
   "exports": {
     ".": {

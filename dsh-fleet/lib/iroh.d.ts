@@ -15,6 +15,7 @@ export declare class FleetNode {
     private readonly log;
     private endpoint?;
     private readonly peers;
+    private readonly dialing;
     private selfId;
     private stopped;
     constructor(config: FleetConfig, log: (...a: unknown[]) => void);
@@ -38,14 +39,23 @@ export declare class FleetNode {
     removePeer(id: string): void;
     dial(id: string): Promise<number>;
     private findFreePort;
+    /**
+     * Event-driven liveness: resolves when the connection closes; clears state
+     * only if this conn is still the current one, then arms a retry.
+     */
+    private watchConn;
+    /** Exponential retry (1s doubling to 30s) while a peer is unreachable. */
+    private scheduleRetry;
+    /** One dial in flight per peer — pair() and retry chains share it. */
     private connectPeer;
+    private dialPeer;
     private rosterFrame;
     private mergeRoster;
     private acceptLoop;
     private handleConn;
+    /** Persist a peer ticket once (idempotent; survives restarts). */
+    private persistTicket;
     private upsertPeer;
     private ctrlLoop;
-    private pingLoop;
     private tunnelAcceptLoop;
-    private reconnectLoop;
 }

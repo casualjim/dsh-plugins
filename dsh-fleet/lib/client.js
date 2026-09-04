@@ -42,7 +42,7 @@ window.__ModuleLoader__.load({
       inject: () => inject
     });
     module.exports = __toCommonJS(index_exports);
-    var React2 = require("react");
+    var import_react = __toESM(require("react"), 1);
 
     // src/client/fleet-section.ts
     var React = __toESM(require("react"), 1);
@@ -192,163 +192,182 @@ window.__ModuleLoader__.load({
       status: "/api/dsh-fleet/status",
       dial: "/api/dsh-fleet/dial"
     };
-    var STYLE = "[data-dsh-fleet-row]{margin:2px 10px 6px;display:flex}[data-dsh-fleet-btn]{flex:1;display:flex;align-items:center;gap:6px;padding:5px 10px;border:none;border-radius:8px;cursor:pointer;background:transparent;color:inherit;font:inherit;font-size:12px;text-align:left;overflow:hidden;white-space:nowrap}[data-dsh-fleet-btn]:hover{background:rgba(127,127,127,.15)}[data-dsh-fleet-dot]{width:7px;height:7px;border-radius:50%;background:#888;flex:none}[data-dsh-fleet-dot].on{background:#3fb26f}[data-dsh-fleet-menu]{position:fixed;z-index:2147483000;min-width:200px;max-height:50vh;overflow:auto;background:var(--dsh-bg-elevated,#2a2a2e);color:inherit;border:1px solid rgba(127,127,127,.35);border-radius:10px;padding:4px;box-shadow:0 8px 24px rgba(0,0,0,.35);font-size:13px}[data-dsh-fleet-item]{display:flex;align-items:center;gap:8px;width:100%;padding:6px 10px;border:none;border-radius:7px;cursor:pointer;background:transparent;color:inherit;font:inherit;text-align:left}[data-dsh-fleet-item]:hover{background:rgba(127,127,127,.18)}[data-dsh-fleet-item][disabled]{opacity:.5;cursor:default}[data-dsh-fleet-hint]{padding:4px 10px;font-size:11px;opacity:.6}";
-    function el(tag, attrs = {}) {
-      const node = document.createElement(tag);
-      for (const [key, value] of Object.entries(attrs)) {
-        if (key === "text") node.textContent = String(value);
-        else if (key === "dataset") Object.assign(node.dataset, value);
-        else if (key.startsWith("on") && typeof value === "function") node.addEventListener(key.slice(2), value);
-        else if (value !== void 0 && value !== null) node.setAttribute(key, String(value));
-      }
-      return node;
-    }
     async function getJson(path, init) {
-      const res = await fetch(path, { ...init, headers: { "content-type": "application/json", ...init?.headers ?? {} } });
+      const res = await fetch(path, init);
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.error ?? path + " " + String(res.status));
       return body;
     }
-    function findNewSessionButton() {
-      return document.querySelector('button[class$="_newSession"]');
+    var HOME_KEY = "dsh-fleet:home";
+    function homeHref() {
+      try {
+        return localStorage.getItem(HOME_KEY) ?? window.location.origin;
+      } catch {
+        return window.location.origin;
+      }
+    }
+    async function pick(peer) {
+      if (peer.online !== true) return;
+      try {
+        const out = await getJson(API.dial, { method: "POST", body: JSON.stringify({ id: peer.id }) });
+        window.location.href = "http://127.0.0.1:" + String(out.port) + "/";
+      } catch (error) {
+        console.warn("[dsh-fleet] dial failed:", error);
+      }
+    }
+    var dotStyle = {
+      width: 8,
+      height: 8,
+      borderRadius: "50%",
+      flex: "none"
+    };
+    var menuItemStyle = {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      width: "100%",
+      padding: "6px 8px",
+      border: "none",
+      borderRadius: 8,
+      background: "transparent",
+      color: "inherit",
+      font: "inherit",
+      fontSize: 12,
+      textAlign: "left",
+      cursor: "pointer"
+    };
+    function FleetFooterAction({ wide }) {
+      const [status, setStatus] = import_react.default.useState(null);
+      const [open, setOpen] = import_react.default.useState(false);
+      const rootRef = import_react.default.useRef(null);
+      import_react.default.useEffect(() => {
+        let alive = true;
+        const tick = () => {
+          getJson(API.status).then((body) => {
+            if (!alive) return;
+            setStatus(body);
+            if (window.location.port === String(body.self?.dsh_port ?? "")) {
+              try {
+                localStorage.setItem(HOME_KEY, window.location.origin);
+              } catch {
+              }
+            }
+          }).catch(() => {
+          });
+        };
+        tick();
+        const timer = window.setInterval(tick, 5e3);
+        return () => {
+          alive = false;
+          window.clearInterval(timer);
+        };
+      }, []);
+      import_react.default.useEffect(() => {
+        if (!open) return;
+        const onDown = (event) => {
+          if (rootRef.current !== null && event.target instanceof Node && !rootRef.current.contains(event.target)) setOpen(false);
+        };
+        document.addEventListener("pointerdown", onDown);
+        return () => document.removeEventListener("pointerdown", onDown);
+      }, [open]);
+      const peers = (status?.peers ?? []).filter((p) => p.id !== status?.self.id);
+      const online = peers.filter((p) => p.online).length;
+      const menu = open === false ? null : import_react.default.createElement(
+        "div",
+        {
+          style: {
+            position: "absolute",
+            bottom: "calc(100% + 6px)",
+            left: 8,
+            right: 8,
+            background: "var(--dsh-bg-elevated, #1e1f22)",
+            color: "inherit",
+            border: "1px solid rgba(127,127,127,.35)",
+            borderRadius: 10,
+            padding: 4,
+            zIndex: 50,
+            boxShadow: "0 8px 24px rgba(0,0,0,.35)"
+          }
+        },
+        import_react.default.createElement("div", { style: { fontSize: 11, opacity: 0.55, padding: "4px 8px" } }, "fleet instances"),
+        import_react.default.createElement(
+          "button",
+          {
+            onClick: () => {
+              setOpen(false);
+              window.location.href = homeHref();
+            },
+            style: menuItemStyle
+          },
+          import_react.default.createElement("span", { style: { ...dotStyle, background: "#4ade80" } }),
+          import_react.default.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, (status?.self.name ?? "local") + " · local")
+        ),
+        peers.map((peer) => import_react.default.createElement(
+          "button",
+          {
+            key: peer.id,
+            onClick: () => {
+              setOpen(false);
+              void pick(peer);
+            },
+            disabled: peer.online !== true,
+            style: menuItemStyle
+          },
+          import_react.default.createElement("span", { style: { ...dotStyle, background: peer.online ? "#4ade80" : "rgba(127,127,127,.5)" } }),
+          import_react.default.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, peer.name + (peer.online ? "" : " · offline"))
+        ))
+      );
+      const label = "fleet · " + online + "/" + peers.length;
+      return import_react.default.createElement(
+        "div",
+        { ref: rootRef, style: { position: "relative", width: wide ? "100%" : "auto" } },
+        menu,
+        import_react.default.createElement(
+          "button",
+          {
+            title: label,
+            onClick: () => setOpen((v) => !v),
+            style: {
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              width: wide ? "100%" : "auto",
+              padding: wide ? "6px 10px" : "6px 8px",
+              border: "none",
+              borderRadius: 8,
+              background: "rgba(127,127,127,.12)",
+              color: "inherit",
+              font: "inherit",
+              fontSize: 12,
+              cursor: "pointer",
+              justifyContent: wide ? "flex-start" : "center"
+            }
+          },
+          import_react.default.createElement("span", { style: { ...dotStyle, background: online > 0 ? "#4ade80" : "rgba(127,127,127,.5)" } }),
+          wide ? import_react.default.createElement("span", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, label) : null
+        )
+      );
     }
     function apply(ctx) {
       try {
-        if (document.querySelector("style[data-dsh-fleet-style]") === null) {
-          const style = document.createElement("style");
-          style.dataset.dshFleetStyle = "";
-          style.textContent = STYLE;
-          document.head.appendChild(style);
-        }
-        mount();
+        registerSlots(ctx);
       } catch (error) {
-        console.warn("[dsh-fleet] client mount failed:", error);
-      }
-      try {
-        registerSettingsSection(ctx);
-      } catch (error) {
-        console.warn("[dsh-fleet] settings section failed:", error);
+        console.warn("[dsh-fleet] client slots failed:", error);
       }
     }
-    function registerSettingsSection(ctx) {
+    function registerSlots(ctx) {
       const slots = ctx.slots ?? (typeof ctx.get === "function" ? ctx.get("slots") : void 0);
       if (slots === void 0 || typeof slots.inject !== "function" || typeof slots.register !== "function") return;
+      slots.inject("sidebar.footer.action", () => slots.register(
+        { name: "sidebar.footer.action", id: "fleet", order: 100 },
+        FleetFooterAction
+      ));
       slots.inject("settings.section", () => slots.register({
         name: "settings.section",
         id: "fleet",
         order: 35,
         label: () => "Fleet"
       }, FleetSection));
-    }
-    function mount() {
-      let row = null;
-      let menu = null;
-      let status = null;
-      const closeMenu = () => {
-        menu?.remove();
-        menu = null;
-      };
-      const navigate = (href) => {
-        window.location.href = href;
-      };
-      const pick = async (peer) => {
-        closeMenu();
-        if (peer.online !== true) return;
-        try {
-          const out = await getJson(API.dial, { method: "POST", body: JSON.stringify({ id: peer.id }) });
-          navigate("http://127.0.0.1:" + String(out.port) + "/");
-        } catch (error) {
-          console.warn("[dsh-fleet] dial failed:", error);
-        }
-      };
-      const openMenu = (anchor2) => {
-        closeMenu();
-        if (status === null) return;
-        const list = el("div", { "data-dsh-fleet-menu": "" });
-        list.appendChild(el("div", { "data-dsh-fleet-hint": "", text: "fleet instances" }));
-        const selfItem = el("button", {
-          "data-dsh-fleet-item": "",
-          onclick: () => {
-            closeMenu();
-            navigate("/");
-          }
-        });
-        selfItem.appendChild(el("span", { "data-dsh-fleet-dot": "", class: "on" }));
-        selfItem.appendChild(el("span", { text: status.self.name + " · local" }));
-        list.appendChild(selfItem);
-        for (const peer of status.peers) {
-          if (peer.id === status.self.id) continue;
-          const attrs = {
-            "data-dsh-fleet-item": "",
-            onclick: () => {
-              void pick(peer);
-            }
-          };
-          if (peer.online !== true) attrs.disabled = "";
-          const item = el("button", attrs);
-          item.appendChild(el("span", { "data-dsh-fleet-dot": "", class: peer.online ? "on" : "" }));
-          item.appendChild(el("span", { text: peer.name + (peer.online === true ? "" : " · offline") }));
-          list.appendChild(item);
-        }
-        document.body.appendChild(list);
-        const rect = anchor2.getBoundingClientRect();
-        list.style.left = Math.max(8, rect.left) + "px";
-        list.style.top = rect.bottom + 4 + "px";
-        menu = list;
-        setTimeout(() => {
-          document.addEventListener("pointerdown", function onDown(event) {
-            if (menu !== null && event.target instanceof Node && menu.contains(event.target) === false) {
-              closeMenu();
-              document.removeEventListener("pointerdown", onDown);
-            }
-          });
-        }, 0);
-      };
-      const buildRow = () => {
-        const container = el("div", { "data-dsh-fleet-row": "" });
-        const btn = el("button", {
-          "data-dsh-fleet-btn": "",
-          onclick: (event) => {
-            event.stopPropagation();
-            if (menu === null) openMenu(container);
-            else closeMenu();
-          }
-        });
-        const dot = el("span", { "data-dsh-fleet-dot": "" });
-        const label = el("span", { text: "fleet · local" });
-        btn.appendChild(dot);
-        btn.appendChild(label);
-        container.appendChild(btn);
-        container.addEventListener("fleet:update", () => {
-          const peers = (status?.peers ?? []).filter((p) => p.id !== status?.self.id);
-          const online = peers.filter((p) => p.online).length;
-          dot.className = online > 0 ? "on" : "";
-          label.textContent = "fleet · " + String(online) + "/" + String(peers.length);
-        });
-        return container;
-      };
-      let anchor = null;
-      const observer = new MutationObserver(() => {
-        if (row !== null && row.isConnected && anchor !== null && anchor.isConnected && row.previousElementSibling === anchor) return;
-        anchor = findNewSessionButton();
-        if (anchor === null) return;
-        if (row === null || row.isConnected === false) row = buildRow();
-        anchor.after(row);
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-      const refresh = () => {
-        getJson(API.status).then((body) => {
-          status = body;
-          row?.dispatchEvent(new CustomEvent("fleet:update"));
-        }).catch(() => {
-        });
-      };
-      refresh();
-      window.setInterval(refresh, 5e3);
-      window.addEventListener("pagehide", () => {
-        observer.disconnect();
-        closeMenu();
-      }, { once: true });
     }
     var inject = ["slots"];
 

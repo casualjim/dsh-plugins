@@ -1,15 +1,18 @@
 /**
  * dsh-fleet — browser entry.
  *
- * Injects an instance dropdown row directly below the sidebar New Session
- * button (anchor: css-modules class suffix "_newSession"; the DSH client
- * css pattern is [hash]_[local]). Lists this machine + fleet peers from
- * /api/dsh-fleet/status; picking a peer dials a loopback gateway port and
- * navigates the tab there. The plugin runs on every fleet member, so the
- * dropdown is present on remote GUIs too — pick "local" to come back.
+ * Contributes two React cells through the client slot registry (no direct
+ * DOM work anywhere — the shell owns rendering):
+ *   - "sidebar.footer.action" list cell: fleet instance switcher beside the
+ *     Settings seat (wide row in the expanded sidebar, icon in the rail).
+ *   - "settings.section" list cell: Fleet settings page (pairing, devices).
  *
- * Failure policy: warn only, never break GUI. If the sidebar anchor never
- * appears (custom shell), stays dormant.
+ * Status refresh is one fetch every 5s while the sidebar is mounted, bounded
+ * by React lifecycle. On a peer gateway origin the page is served through the
+ * tunnel, so the self row navigates to the remembered local origin
+ * (localStorage "dsh-fleet:home") instead of a peer-relative "/".
+ *
+ * Failure policy: warn only, never break the GUI.
  */
 export declare function apply(ctx: unknown): void;
 export declare const inject: string[];

@@ -72,11 +72,14 @@ interface Peer {
   conn?: Connection;
   gatewayPort?: number;
   gatewayServer?: net.Server;
+  retryTimer?: ReturnType<typeof setTimeout>;
+  backoffMs?: number;
 }
 
 export class FleetNode {
   private endpoint?: Endpoint;
   private readonly peers = new Map<string, Peer>();
+  private readonly dialing = new Map<string, Promise<void>>();
   private selfId = "";
   private stopped = false;
 
@@ -97,6 +100,7 @@ export class FleetNode {
     return JSON.stringify({
       t: "hello", id: this.selfId, name: this.config.name,
       dsh_port: this.config.dsh_port, proof: this.proof(this.selfId),
+      ticket: this.invite(),
     });
   }
 
@@ -121,12 +125,14 @@ export class FleetNode {
 
     void this.acceptLoop();
     for (const ticket of this.config.peers) void this.connectPeer(ticket).catch(() => {});
-    void this.reconnectLoop();
   }
 
   async stop(): Promise<void> {
     this.stopped = true;
-    for (const peer of this.peers.values()) peer.gatewayServer?.close();
+    for (const peer of this.peers.values()) {
+      if (peer.retryTimer !== undefined) clearTimeout(peer.retryTimer);
+      peer.gatewayServer?.close();
+    }
     await this.endpoint?.close();
   }
 
@@ -250,29 +256,75 @@ export class FleetNode {
 
   // ---------- outbound ----------
 
-  private async connectPeer(ticket: string): Promise<void> {
+  /**
+   * Event-driven liveness: resolves when the connection closes; clears state
+   * only if this conn is still the current one, then arms a retry.
+   */
+  private watchConn(id: string, conn: Connection): void {
+    void conn.closed().then(() => {
+      const peer = this.peers.get(id);
+      if (peer === undefined || peer.conn !== conn) return;
+      peer.conn = undefined;
+      if (peer.ticket !== undefined) this.scheduleRetry(peer.ticket, id);
+    }).catch(() => {});
+  }
+
+  /** Exponential retry (1s doubling to 30s) while a peer is unreachable. */
+  private scheduleRetry(ticket: string, id: string): void {
+    if (this.stopped) return;
+    const peer = this.peers.get(id);
+    if (peer === undefined || peer.retryTimer !== undefined) return;
+    const delay = peer.backoffMs === undefined ? 1000 : Math.min(peer.backoffMs * 2, 30000);
+    peer.backoffMs = delay;
+    peer.retryTimer = setTimeout(() => {
+      peer.retryTimer = undefined;
+      if (this.stopped || peer.conn !== undefined) return;
+      void this.connectPeer(ticket).catch(() => {});
+    }, delay);
+    this.log("retry " + peer.name + " in " + String(delay) + "ms");
+  }
+
+  /** One dial in flight per peer — pair() and retry chains share it. */
+  private connectPeer(ticket: string): Promise<void> {
+    let id = "";
+    try { id = EndpointTicket.fromString(ticket.trim()).endpointAddr().id().toString(); } catch { return Promise.resolve(); }
+    const inFlight = this.dialing.get(id);
+    if (inFlight !== undefined) return inFlight;
+    const dial = this.dialPeer(ticket, id).finally(() => { this.dialing.delete(id); });
+    this.dialing.set(id, dial);
+    return dial;
+  }
+
+  private async dialPeer(ticket: string, id: string): Promise<void> {
     if (this.stopped || this.endpoint === undefined) return;
-    const addr = EndpointTicket.fromString(ticket.trim()).endpointAddr();
-    const id = addr.id().toString();
     if (id === this.selfId) return;
     if (this.peers.get(id)?.conn !== undefined) return;
+    const addr = EndpointTicket.fromString(ticket.trim()).endpointAddr();
 
-    const conn = await this.endpoint.connect(addr, ALPN);
-    const bi = await conn.openBi();
-    await writeLine(bi.send, this.selfHello());
-    const line = await readLine(bi.recv);
-    const hello = JSON.parse(line) as { t?: string; name?: string; dsh_port?: number; proof?: string };
-    const remoteId = conn.remoteId().toString();
-    if (hello.t !== "hello" || !this.verify(remoteId, String(hello.proof ?? ""))) {
-      await conn.close(1n, Array.from(new TextEncoder().encode("bad proof")));
-      throw new Error("peer hello rejected");
+    let conn: Connection;
+    try {
+      conn = await this.endpoint.connect(addr, ALPN);
+      const bi = await conn.openBi();
+      await writeLine(bi.send, this.selfHello());
+      const line = await readLine(bi.recv);
+      const hello = JSON.parse(line) as { t?: string; name?: string; dsh_port?: number; proof?: string };
+      const remoteId = conn.remoteId().toString();
+      if (hello.t !== "hello" || !this.verify(remoteId, String(hello.proof ?? ""))) {
+        await conn.close(1n, Array.from(new TextEncoder().encode("bad proof")));
+        throw new Error("peer hello rejected");
+      }
+      this.upsertPeer(remoteId, String(hello.name ?? "peer"), Number(hello.dsh_port ?? 3080), conn, ticket.trim());
+      await writeLine(bi.send, this.rosterFrame());
+      void this.ctrlLoop(remoteId, bi.recv, conn);
+      void this.tunnelAcceptLoop(remoteId, conn);
+      const peer = this.peers.get(remoteId);
+      if (peer !== undefined) peer.backoffMs = undefined;
+      this.watchConn(remoteId, conn);
+      this.log("connected " + String(hello.name ?? remoteId));
+    } catch (error) {
+      this.scheduleRetry(ticket.trim(), id);
+      throw error;
     }
-    this.upsertPeer(remoteId, String(hello.name ?? "peer"), Number(hello.dsh_port ?? 3080), conn, ticket.trim());
-    await writeLine(bi.send, this.rosterFrame());
-    void this.ctrlLoop(remoteId, bi.recv);
-    void this.pingLoop(remoteId, bi.send);
-    void this.tunnelAcceptLoop(remoteId, conn);
-    this.log("connected " + String(hello.name ?? remoteId));
   }
 
   private rosterFrame(): string {
@@ -290,7 +342,10 @@ export class FleetNode {
         id, name: String(entry.name ?? "peer"), dshPort: Number(entry.dsh_port ?? 3080),
         ...(typeof entry.ticket === "string" ? { ticket: entry.ticket } : {}),
       });
-      if (typeof entry.ticket === "string") void this.connectPeer(entry.ticket).catch(() => {});
+      if (typeof entry.ticket === "string") {
+        this.persistTicket(entry.ticket);
+        void this.connectPeer(entry.ticket).catch(() => {});
+      }
     }
   }
 
@@ -312,31 +367,52 @@ export class FleetNode {
     const remoteId = conn.remoteId().toString();
     const ctrl = await conn.acceptBi();
     const line = await readLine(ctrl.recv);
-    const hello = JSON.parse(line) as { t?: string; name?: string; dsh_port?: number; proof?: string };
+    const hello = JSON.parse(line) as { t?: string; name?: string; dsh_port?: number; proof?: string; ticket?: string };
     if (hello.t !== "hello" || !this.verify(remoteId, String(hello.proof ?? ""))) {
       await conn.close(1n, Array.from(new TextEncoder().encode("bad proof")));
       return;
     }
-    this.upsertPeer(remoteId, String(hello.name ?? "peer"), Number(hello.dsh_port ?? 3080), conn, undefined);
+    // the dialer's own ticket rides the hello — persist it so pairing is
+    // symmetric (one operation) and the acceptor can redial after restart.
+    const ticket = typeof hello.ticket === "string" ? hello.ticket : undefined;
+    if (ticket !== undefined) this.persistTicket(ticket);
+    this.upsertPeer(remoteId, String(hello.name ?? "peer"), Number(hello.dsh_port ?? 3080), conn, ticket);
     await writeLine(ctrl.send, this.selfHello());
     await writeLine(ctrl.send, this.rosterFrame());
-    void this.ctrlLoop(remoteId, ctrl.recv);
+    void this.ctrlLoop(remoteId, ctrl.recv, conn);
     void this.tunnelAcceptLoop(remoteId, conn);
+    const peer = this.peers.get(remoteId);
+    if (peer !== undefined) peer.backoffMs = undefined;
+    this.watchConn(remoteId, conn);
     this.log("peer " + String(hello.name ?? remoteId) + " connected");
+  }
+
+  /** Persist a peer ticket once (idempotent; survives restarts). */
+  private persistTicket(ticket: string): void {
+    if (this.config.peers.includes(ticket)) return;
+    this.config.peers = [...this.config.peers, ticket];
+    saveConfig(this.config);
   }
 
   private upsertPeer(id: string, name: string, dshPort: number, conn: Connection, ticket?: string): void {
     const peer = this.peers.get(id) ?? { id, name, dshPort };
     peer.name = name;
     peer.dshPort = dshPort;
+    const replaced = peer.conn;
     peer.conn = conn;
     if (ticket !== undefined) peer.ticket = ticket;
     this.peers.set(id, peer);
+    // a newer connection replaced this one — shut the old down so its
+    // teardown cannot mark the fresh conn offline (loop guards also check).
+    if (replaced !== undefined && replaced !== conn) { try { void replaced.close(0n, []); } catch { /* already closed */ } }
   }
 
-  // ---------- shared loops ----------
+  // ---------- per-connection streams ----------
+  // These loops are await-driven frame pumps, not timers. Online state is
+  // owned solely by watchConn() (conn.closed()); stream errors just end the
+  // pump — a closed connection fires the closed() watcher.
 
-  private async ctrlLoop(id: string, recv: RecvStream): Promise<void> {
+  private async ctrlLoop(_id: string, recv: RecvStream, _conn: Connection): Promise<void> {
     try {
       for (;;) {
         const line = await readLine(recv);
@@ -345,51 +421,17 @@ export class FleetNode {
           await this.mergeRoster(frame as { peers?: Array<{ id?: string; name?: string; dsh_port?: number; ticket?: string | null }> });
         }
       }
-    } catch {
-      const peer = this.peers.get(id);
-      if (peer !== undefined) peer.conn = undefined;
-    }
+    } catch { /* stream ended; watchConn() owns state */ }
   }
 
-  private async pingLoop(id: string, send: SendStream): Promise<void> {
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 5000));
-      try {
-        await writeLine(send, JSON.stringify({ t: "ping" }));
-      } catch {
-        const peer = this.peers.get(id);
-        if (peer !== undefined) peer.conn = undefined;
-        return;
-      }
-    }
-  }
-
-  private async tunnelAcceptLoop(id: string, conn: Connection): Promise<void> {
+  private async tunnelAcceptLoop(_id: string, conn: Connection): Promise<void> {
     try {
       for (;;) {
         const bi = await conn.acceptBi();
         const socket = await net.connect({ host: "127.0.0.1", port: this.config.dsh_port });
         pump(socket, bi.send, bi.recv);
       }
-    } catch {
-      const peer = this.peers.get(id);
-      if (peer !== undefined) peer.conn = undefined;
-    }
-  }
-
-  private async reconnectLoop(): Promise<void> {
-    for (;;) {
-      await new Promise((r) => setTimeout(r, 5000));
-      if (this.stopped) return;
-      for (const peer of this.peers.values()) {
-        if (peer.conn === undefined && peer.ticket !== undefined) {
-          void this.connectPeer(peer.ticket).catch(() => {});
-        }
-      }
-      for (const ticket of this.config.peers) {
-        void this.connectPeer(ticket).catch(() => {});
-      }
-    }
+    } catch { /* stream ended; watchConn() owns state */ }
   }
 }
 
