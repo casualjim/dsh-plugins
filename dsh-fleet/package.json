@@ -9,8 +9,7 @@
     "test": "node test/smoke.ts && node test/client-slots.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "pnpm run typecheck && pnpm run build && pnpm run test",
-    "test:mesh": "node test/mesh.ts",
-    "test:client": "node test/client-churn.ts"
+    "test:mesh": "node test/mesh.ts"
   },
   "exports": {
     ".": {

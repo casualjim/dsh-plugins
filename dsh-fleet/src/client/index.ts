@@ -44,19 +44,34 @@ async function getJson(path: string, init?: RequestInit): Promise<unknown> {
 }
 
 // Origin of this machine's own GUI. Remembered whenever we browse it
-// directly (location port === self dsh_port); on a gateway origin the self
-// row returns here instead of reloading the peer.
+// directly (location port === self dsh_port), and carried to peer pages as a
+// ?fleet-home= query param — localStorage is per-origin, so a page served
+// through a peer gateway (127.0.0.1:7900) shares no storage with the local
+// origin (127.0.0.1:3080) and could otherwise never navigate back.
 const HOME_KEY = "dsh-fleet:home";
 function homeHref(): string {
   try { return localStorage.getItem(HOME_KEY) ?? window.location.origin; }
   catch { return window.location.origin; }
 }
 
+/** Consume ?fleet-home= from the URL (if present) and remember it locally. */
+function captureHomeParam(): void {
+  try {
+    const url = new URL(window.location.href);
+    const home = url.searchParams.get("fleet-home");
+    if (home === null) return;
+    url.searchParams.delete("fleet-home");
+    window.history.replaceState(null, "", url.toString());
+    localStorage.setItem(HOME_KEY, home);
+  } catch { /* private mode / stubbed window */ }
+}
+
 async function pick(peer: PeerView): Promise<void> {
   if (peer.online !== true) return;
   try {
     const out = (await getJson(API.dial, { method: "POST", body: JSON.stringify({ id: peer.id }) })) as { port: number };
-    window.location.href = "http://127.0.0.1:" + String(out.port) + "/";
+    // carry the remembered home so the peer page can navigate back
+    window.location.href = "http://127.0.0.1:" + String(out.port) + "/?fleet-home=" + encodeURIComponent(homeHref());
   } catch (error) {
     console.warn("[dsh-fleet] dial failed:", error);
   }
@@ -79,6 +94,7 @@ function FleetFooterAction({ wide }: { wide: boolean }): React.ReactElement {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
+    captureHomeParam();
     let alive = true;
     const tick = () => {
       getJson(API.status)
@@ -106,7 +122,8 @@ function FleetFooterAction({ wide }: { wide: boolean }): React.ReactElement {
   }, [open]);
 
   const peers = (status?.peers ?? []).filter((p) => p.id !== status?.self.id);
-  const online = peers.filter((p) => p.online).length;
+  // self is always up — this page is being served by it
+  const online = peers.filter((p) => p.online).length + 1;
 
   const menu = open === false ? null : React.createElement("div", {
     style: {
@@ -135,7 +152,7 @@ function FleetFooterAction({ wide }: { wide: boolean }): React.ReactElement {
     )),
   );
 
-  const label = "fleet \u00b7 " + online + "/" + peers.length;
+  const label = "fleet \u00b7 " + online + "/" + (peers.length + 1);
   return React.createElement("div", { ref: rootRef, style: { position: "relative", width: wide ? "100%" : "auto" } },
     menu,
     React.createElement("button", {
@@ -148,7 +165,7 @@ function FleetFooterAction({ wide }: { wide: boolean }): React.ReactElement {
         fontSize: 12, cursor: "pointer", justifyContent: wide ? "flex-start" : "center",
       },
     },
-      React.createElement("span", { style: { ...dotStyle, background: online > 0 ? "#4ade80" : "rgba(127,127,127,.5)" } }),
+      React.createElement("span", { style: { ...dotStyle, background: peers.some((p) => p.online) ? "#4ade80" : "rgba(127,127,127,.5)" } }),
       wide ? React.createElement("span", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, label) : null,
     ),
   );

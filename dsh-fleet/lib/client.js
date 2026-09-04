@@ -206,11 +206,22 @@ window.__ModuleLoader__.load({
         return window.location.origin;
       }
     }
+    function captureHomeParam() {
+      try {
+        const url = new URL(window.location.href);
+        const home = url.searchParams.get("fleet-home");
+        if (home === null) return;
+        url.searchParams.delete("fleet-home");
+        window.history.replaceState(null, "", url.toString());
+        localStorage.setItem(HOME_KEY, home);
+      } catch {
+      }
+    }
     async function pick(peer) {
       if (peer.online !== true) return;
       try {
         const out = await getJson(API.dial, { method: "POST", body: JSON.stringify({ id: peer.id }) });
-        window.location.href = "http://127.0.0.1:" + String(out.port) + "/";
+        window.location.href = "http://127.0.0.1:" + String(out.port) + "/?fleet-home=" + encodeURIComponent(homeHref());
       } catch (error) {
         console.warn("[dsh-fleet] dial failed:", error);
       }
@@ -241,6 +252,7 @@ window.__ModuleLoader__.load({
       const [open, setOpen] = import_react.default.useState(false);
       const rootRef = import_react.default.useRef(null);
       import_react.default.useEffect(() => {
+        captureHomeParam();
         let alive = true;
         const tick = () => {
           getJson(API.status).then((body) => {
@@ -271,7 +283,7 @@ window.__ModuleLoader__.load({
         return () => document.removeEventListener("pointerdown", onDown);
       }, [open]);
       const peers = (status?.peers ?? []).filter((p) => p.id !== status?.self.id);
-      const online = peers.filter((p) => p.online).length;
+      const online = peers.filter((p) => p.online).length + 1;
       const menu = open === false ? null : import_react.default.createElement(
         "div",
         {
@@ -317,7 +329,7 @@ window.__ModuleLoader__.load({
           import_react.default.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, peer.name + (peer.online ? "" : " · offline"))
         ))
       );
-      const label = "fleet · " + online + "/" + peers.length;
+      const label = "fleet · " + online + "/" + (peers.length + 1);
       return import_react.default.createElement(
         "div",
         { ref: rootRef, style: { position: "relative", width: wide ? "100%" : "auto" } },
@@ -343,7 +355,7 @@ window.__ModuleLoader__.load({
               justifyContent: wide ? "flex-start" : "center"
             }
           },
-          import_react.default.createElement("span", { style: { ...dotStyle, background: online > 0 ? "#4ade80" : "rgba(127,127,127,.5)" } }),
+          import_react.default.createElement("span", { style: { ...dotStyle, background: peers.some((p) => p.online) ? "#4ade80" : "rgba(127,127,127,.5)" } }),
           wide ? import_react.default.createElement("span", { style: { whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } }, label) : null
         )
       );
