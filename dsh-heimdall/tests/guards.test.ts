@@ -1,7 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
+
 import { loadConfig } from '../src/config.ts'
 import { isDotenvPath } from '../src/guards/env-protect.ts'
 import { getKubectlBlockReason } from '../src/guards/kubectl.ts'
@@ -9,6 +10,16 @@ import { getSopsBlockReason } from '../src/guards/sops.ts'
 import { checkCommand, splitShellLines } from '../src/guards/command-policy.ts'
 import type { CommandPolicy } from '../src/config.ts'
 import { getSecretReference, redactOutput, type SecretGuardState } from '../src/guards/secret.ts'
+
+let mockHomeDir = ""
+
+vi.mock("node:os", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:os")>()
+  return {
+    ...actual,
+    homedir: () => mockHomeDir,
+  }
+})
 
 describe('env-protect', () => {
   const blocked = ['.env', '.envrc', '.env.local', 'foo.env', 'sub/.env', '@.env', '.env.production']
@@ -111,9 +122,11 @@ describe('loadConfig', () => {
     writeFileSync(p, content)
   }
 
-  it('merges .dsh/heimdall.json over the row config', () => {
+  it('migrates .dsh/heimdall.json into .config/heimdall.json and deletes it', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-cfg-'))
-    mk(root, '.dsh/heimdall.json', JSON.stringify({
+    mockHomeDir = join(root, 'home')
+    mkdirSync(mockHomeDir, { recursive: true })
+    mk(join(mockHomeDir, '.dsh'), 'heimdall.json', JSON.stringify({
       disabled: ['sops-secret-guard'],
       commandPolicies: [{ name: 'no-cargo-test', blocked: ['cargo', 'test'], message: 'Use mise test.' }],
     }))
@@ -121,18 +134,78 @@ describe('loadConfig', () => {
     const loaded = loadConfig(root, { commandPolicies: [{ name: 'row-deny', blocked: ['terraform'], message: 'no' }] })
     expect(loaded.config.commandPolicies?.map((p) => p.name)).toEqual(['row-deny', 'no-cargo-test'])
     expect([...loaded.disabled]).toEqual(['sops-secret-guard'])
+    // migrated: universal user file written, legacy deleted
+    expect(existsSync(join(mockHomeDir, '.config', 'heimdall', 'config.json'))).toBe(true)
+    expect(existsSync(join(mockHomeDir, '.dsh', 'heimdall.json'))).toBe(false)
+    // second load reads the universal file; legacy stays gone
+    const again = loadConfig(root, {})
+    expect(again.config.commandPolicies?.map((p) => p.name)).toEqual(['no-cargo-test'])
+
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('ignores legacy files once .config/heimdall.json exists and deletes them', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-cfg-'))
+    mockHomeDir = join(root, 'home')
+    mkdirSync(mockHomeDir, { recursive: true })
+    mk(root, '.config/heimdall.json', JSON.stringify({
+      commandPolicies: [{ name: 'xdg-only', blocked: ['xdg'], message: 'no' }],
+    }))
+    mk(root, '.dsh/heimdall.json', JSON.stringify({
+      commandPolicies: [{ name: 'legacy-ignored', blocked: ['legacy'], message: 'no' }],
+    }))
+
+    const loaded = loadConfig(root, {})
+    expect(loaded.config.commandPolicies?.map((p) => p.name)).toEqual(['xdg-only'])
+    expect(existsSync(join(root, '.dsh', 'heimdall.json'))).toBe(false)
+
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('migrates legacy user files from .pi/.omp/.dsh agent homes into the universal user config', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-cfg-'))
+    mockHomeDir = root
+    mk(root, '.pi/agent/heimdall.json', JSON.stringify({
+      disabled: ['sops-secret-guard'],
+    }))
+    mk(root, '.omp/agent/heimdall.jsonc', JSON.stringify({
+      commandPolicies: [{ name: 'omp-only', blocked: ['omp'], message: 'no' }],
+    }))
+
+    const loaded = loadConfig(undefined, { commandPolicies: [{ name: 'row-deny', blocked: ['terraform'], message: 'no' }] })
+    expect(loaded.config.commandPolicies?.map((p) => p.name)).toEqual(['row-deny', 'omp-only'])
+    expect([...loaded.disabled]).toEqual(['sops-secret-guard'])
+    expect(existsSync(join(mockHomeDir, '.config', 'heimdall', 'config.json'))).toBe(true)
+    expect(existsSync(join(root, '.pi', 'agent', 'heimdall.json'))).toBe(false)
+    expect(existsSync(join(root, '.omp', 'agent', 'heimdall.jsonc'))).toBe(false)
 
     rmSync(root, { recursive: true, force: true })
   })
 
   it('falls back to row config when no workspace file exists', () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-cfg-'))
+    mockHomeDir = root
     const loaded = loadConfig(root, { commandPolicies: [{ name: 'row-only', blocked: ['rm'], message: 'no rm' }] })
     expect(loaded.config.commandPolicies?.map((p) => p.name)).toEqual(['row-only'])
 
     rmSync(root, { recursive: true, force: true })
   })
+
+  it('deletes legacy files after writing the universal config', () => {
+    const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-cfg-'))
+    mockHomeDir = join(root, 'home')
+    mkdirSync(mockHomeDir, { recursive: true })
+    const legacy = join(mockHomeDir, '.dsh', 'heimdall.json')
+    mk(join(mockHomeDir, '.dsh'), 'heimdall.json', JSON.stringify({ disabled: ['sops-secret-guard'] }))
+
+    loadConfig(root, {})
+    expect(existsSync(join(mockHomeDir, '.config', 'heimdall', 'config.json'))).toBe(true)
+    expect(existsSync(legacy)).toBe(false)
+
+    rmSync(root, { recursive: true, force: true })
+  })
 })
+
 
 describe('secret-guard', () => {
   const state: SecretGuardState = {

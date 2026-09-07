@@ -6,12 +6,26 @@
  * write proves confinement rather than a grant.
  */
 
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import { HeimdallSandboxProvider, resolveBinaryPath } from '../src/index.ts'
+
+let realHome: string | undefined
+
+beforeAll(() => {
+  // Hermetic HOME: confine() runs the mandatory legacy-config migration and
+  // regenerates default.jsonc — never touch the real user home from tests.
+  realHome = process.env.HOME
+  process.env.HOME = mkdtempSync(join(tmpdir(), 'dsh-heimdall-exec-home-'))
+})
+
+afterAll(() => {
+  if (realHome !== undefined) process.env.HOME = realHome
+})
 
 const BIN = resolveBinaryPath(undefined)
 

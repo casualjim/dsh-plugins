@@ -9,15 +9,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { DEFAULT_PRIVATE_PATHS, migrateWorkspaceConfig } from 'dsh-heimdall/config'
 import { HeimdallSandboxProvider, resolveBinaryPath } from '../src/index.ts'
-
 const WW = { mode: 'workspace-write', workspaceRoot: '/ws' } as const
 
 let realHome: string | undefined
 
 beforeAll(() => {
-  // Hermetic: the global ~/.dsh/heimdall.json layer must not leak real
-  // machine config into these expectations.
+  // Hermetic: the universal user-level chain (~/.config/heimdall) must not
+  // leak real machine config into these expectations.
   realHome = process.env.HOME
   process.env.HOME = mkdtempSync(join(tmpdir(), 'dsh-heimdall-home-'))
 })
@@ -48,7 +48,11 @@ describe('confine', () => {
       cwd: '/ws',
       command: ['bash', '-c', 'echo hi'],
       stdio: 'inherit',
-      filesystem: { writable: ['/ws'] },
+      // generated defaults layer: corpus deny + ~/.pi writable + agent flags
+      sshAgent: false,
+      gpgAgent: false,
+      ageAgent: false,
+      filesystem: { deny: [...DEFAULT_PRIVATE_PATHS], writable: ['/ws', '~/.pi'] },
     })
   })
 
@@ -75,15 +79,19 @@ describe('confine', () => {
     const inside = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: '/ws/sub/app' } as const)
     const insideDoc = JSON.parse(readFileSync(inside.argv[3]!, 'utf-8'))
     expect(insideDoc.filesystem).toEqual({
-      writable: ['/ws/sub/app', '/global/writable', '/proj/target'],
-      deny: ['~/secrets', '!~/secrets/allow'],
+      writable: ['/ws/sub/app', '~/.pi', '/global/writable', '/proj/target'],
+      deny: [...DEFAULT_PRIVATE_PATHS, '~/secrets', '!~/secrets/allow'],
     })
 
-    // unrelated root: global lists only
+    // unrelated root: defaults + global lists only
     const outside = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: '/other' } as const)
     const outsideDoc = JSON.parse(readFileSync(outside.argv[3]!, 'utf-8'))
-    expect(outsideDoc.filesystem).toEqual({ writable: ['/other', '/global/writable'], deny: ['~/secrets'] })
+    expect(outsideDoc.filesystem).toEqual({
+      writable: ['/other', '~/.pi', '/global/writable'],
+      deny: [...DEFAULT_PRIVATE_PATHS, '~/secrets'],
+    })
   })
+
 
   it('prefers the longest matching project key and treats keys as directory boundaries', async () => {
     const sandbox = await setup({
@@ -96,20 +104,19 @@ describe('confine', () => {
     })
 
     const deep = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: '/ws/sub/deep/x' } as const)
-    expect(JSON.parse(readFileSync(deep.argv[3]!, 'utf-8')).filesystem.deny).toEqual(['~/deep'])
+    expect(JSON.parse(readFileSync(deep.argv[3]!, 'utf-8')).filesystem.deny).toEqual([...DEFAULT_PRIVATE_PATHS, '~/deep'])
 
     // `/ws/submarine` must not match `/ws/sub*` sibling — boundary-aware prefix
     const sibling = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: '/ws/submarine' } as const)
-    expect(JSON.parse(readFileSync(sibling.argv[3]!, 'utf-8')).filesystem.deny).toEqual(['~/submarine'])
+    expect(JSON.parse(readFileSync(sibling.argv[3]!, 'utf-8')).filesystem.deny).toEqual([...DEFAULT_PRIVATE_PATHS, '~/submarine'])
 
     const exact = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: '/ws/sub/other' } as const)
-    expect(JSON.parse(readFileSync(exact.argv[3]!, 'utf-8')).filesystem.deny).toEqual(['~/shallow'])
+    expect(JSON.parse(readFileSync(exact.argv[3]!, 'utf-8')).filesystem.deny).toEqual([...DEFAULT_PRIVATE_PATHS, '~/shallow'])
   })
-
-  it('applies the sandbox section of the multi-plugin .dsh/heimdall.json', async () => {
+  it('applies the sandbox section of the multi-plugin .config/heimdall.json', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-wsp-'))
-    mkdirSync(join(root, '.dsh'), { recursive: true })
-    writeFileSync(join(root, '.dsh', 'heimdall.json'), JSON.stringify({
+    mkdirSync(join(root, '.config'), { recursive: true })
+    writeFileSync(join(root, '.config', 'heimdall.json'), JSON.stringify({
       sandbox: {
         network: 'none',
         sshAgent: true,
@@ -129,8 +136,8 @@ describe('confine', () => {
     expect(doc.network).toBe('none')
     expect(doc.sshAgent).toBe(true)
     expect(doc.gpgAgent).toBe(true)
-    expect(doc.filesystem.writable).toEqual([root, '/opt/toolchains', '/var/run/docker.sock'])
-    expect(doc.filesystem.deny).toEqual(['fnox.*', '!~/.docker'])
+    expect(doc.filesystem.writable).toEqual([root, '~/.pi', '/opt/toolchains', '/var/run/docker.sock'])
+    expect(doc.filesystem.deny).toEqual([...DEFAULT_PRIVATE_PATHS, 'fnox.*', '!~/.docker'])
     expect(doc.filesystem.virtual).toEqual({ '/inside/tool': '/host/tool' })
 
     rmSync(root, { recursive: true, force: true })
@@ -138,46 +145,54 @@ describe('confine', () => {
 
   it('applies workspace grants when a sandbox section exists and nothing otherwise', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-wsp-'))
-    mkdirSync(join(root, '.dsh'), { recursive: true })
-    writeFileSync(join(root, '.dsh', 'heimdall.json'), JSON.stringify({
+    mkdirSync(join(root, '.config'), { recursive: true })
+    writeFileSync(join(root, '.config', 'heimdall.json'), JSON.stringify({
       sandbox: { filesystem: { writable: ['/opt/toolchains'], deny: ['~/secret-project'] } },
     }))
 
     const enabled = await setup({ binaryPath: process.execPath })
     const inside = enabled.confine(['true'], { mode: 'workspace-write', workspaceRoot: root } as const)
     const doc = JSON.parse(readFileSync(inside.argv[3]!, 'utf-8'))
-    expect(doc.filesystem.writable).toEqual([root, '/opt/toolchains'])
-    expect(doc.filesystem.deny).toEqual(['~/secret-project'])
+    expect(doc.filesystem.writable).toEqual([root, '~/.pi', '/opt/toolchains'])
+    expect(doc.filesystem.deny).toEqual([...DEFAULT_PRIVATE_PATHS, '~/secret-project'])
 
     const bare = mkdtempSync(join(tmpdir(), 'dsh-heimdall-wsp-'))
     const off = enabled.confine(['true'], { mode: 'workspace-write', workspaceRoot: bare } as const)
-    expect(JSON.parse(readFileSync(off.argv[3]!, 'utf-8')).filesystem).toEqual({ writable: [bare] })
+    expect(JSON.parse(readFileSync(off.argv[3]!, 'utf-8')).filesystem).toEqual({
+      deny: [...DEFAULT_PRIVATE_PATHS],
+      writable: [bare, '~/.pi'],
+    })
 
     // file present but no sandbox section (other plugins only): defaults apply
     const siblings = mkdtempSync(join(tmpdir(), 'dsh-heimdall-wsp-'))
-    mkdirSync(join(siblings, '.dsh'), { recursive: true })
-    writeFileSync(join(siblings, '.dsh', 'heimdall.json'), JSON.stringify({
+    mkdirSync(join(siblings, '.config'), { recursive: true })
+    writeFileSync(join(siblings, '.config', 'heimdall.json'), JSON.stringify({
       commandPolicies: [{ name: 'only-commands', blocked: ['cargo', 'clippy'] }],
     }))
     const sibling = enabled.confine(['true'], { mode: 'workspace-write', workspaceRoot: siblings } as const)
-    expect(JSON.parse(readFileSync(sibling.argv[3]!, 'utf-8')).filesystem).toEqual({ writable: [siblings] })
+    expect(JSON.parse(readFileSync(sibling.argv[3]!, 'utf-8')).filesystem).toEqual({
+      deny: [...DEFAULT_PRIVATE_PATHS],
+      writable: [siblings, '~/.pi'],
+    })
+
 
     rmSync(root, { recursive: true, force: true })
     rmSync(bare, { recursive: true, force: true })
     rmSync(siblings, { recursive: true, force: true })
   })
 
-  it('merges ~/.dsh/heimdall.json under the workspace file, each layer over the previous', async () => {
-    mkdirSync(join(process.env.HOME!, '.dsh'), { recursive: true })
-    writeFileSync(join(process.env.HOME!, '.dsh', 'heimdall.json'), JSON.stringify({
+  it('merges the user-level sandbox section under the workspace section', async () => {
+    const home = process.env.HOME!
+    mkdirSync(join(home, '.config', 'heimdall'), { recursive: true })
+    writeFileSync(join(home, '.config', 'heimdall', 'config.json'), JSON.stringify({
       sandbox: {
         gpgAgent: true,
         filesystem: { writable: ['/global/w'], deny: ['~/g-secret'] },
       },
     }))
     const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-wsp-'))
-    mkdirSync(join(root, '.dsh'), { recursive: true })
-    writeFileSync(join(root, '.dsh', 'heimdall.json'), JSON.stringify({
+    mkdirSync(join(root, '.config'), { recursive: true })
+    writeFileSync(join(root, '.config', 'heimdall.json'), JSON.stringify({
       sandbox: { gpgAgent: false, filesystem: { writable: ['/local/w'] } },
     }))
 
@@ -185,18 +200,18 @@ describe('confine', () => {
     const confined = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: root } as const)
     const doc = JSON.parse(readFileSync(confined.argv[3]!, 'utf-8'))
     // lists append global -> workspace; scalars take the most specific layer
-    expect(doc.filesystem.writable).toEqual([root, '/global/w', '/local/w'])
-    expect(doc.filesystem.deny).toEqual(['~/g-secret'])
+    expect(doc.filesystem.writable).toEqual([root, '~/.pi', '/global/w', '/local/w'])
+    expect(doc.filesystem.deny).toEqual([...DEFAULT_PRIVATE_PATHS, '~/g-secret'])
     expect(doc.gpgAgent).toBe(false)
 
-    rmSync(join(process.env.HOME!, '.dsh', 'heimdall.json'), { force: true })
+    rmSync(join(home, '.config', 'heimdall', 'config.json'), { force: true })
     rmSync(root, { recursive: true, force: true })
   })
 
-  it('fails loudly on malformed workspace policy', async () => {
+  it('fails loudly on malformed universal workspace policy', async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-wsp-'))
-    mkdirSync(join(root, '.dsh'), { recursive: true })
-    writeFileSync(join(root, '.dsh', 'heimdall.json'), '{ nope')
+    mkdirSync(join(root, '.config'), { recursive: true })
+    writeFileSync(join(root, '.config', 'heimdall.json'), '{ nope')
 
     const sandbox = await setup({ binaryPath: process.execPath })
     expect(() => sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: root } as const))
@@ -235,14 +250,99 @@ describe('confine', () => {
     // lists concat across layers; virtual mounts merge by key
     expect(doc.env).toEqual({ allow: ['PATH'], deny: ['AWS_SECRET_ACCESS_KEY', 'GITHUB_TOKEN'] })
     expect(doc.filesystem.virtual).toEqual({ '/inside/tool': '/host/tool', '/inside/data': '/host/data' })
-    // fragment fields stay absent when no layer defines them
+    // defaults still apply when no layer defines fragment fields: agent
+    // flags false, corpus deny + ~/.pi writable; network/env stay absent
     const noFragment = await setup({ binaryPath: process.execPath })
     const plain = noFragment.confine(['true'], { mode: 'workspace-write', workspaceRoot: '/other' } as const)
     const plainDoc = JSON.parse(readFileSync(plain.argv[3]!, 'utf-8'))
     expect(plainDoc.network).toBeUndefined()
     expect(plainDoc.env).toBeUndefined()
-    expect(plainDoc.sshAgent).toBeUndefined()
+    expect(plainDoc.sshAgent).toBe(false)
+    expect(plainDoc.gpgAgent).toBe(false)
+    expect(plainDoc.ageAgent).toBe(false)
+    expect(plainDoc.filesystem.deny).toEqual([...DEFAULT_PRIVATE_PATHS])
+    expect(plainDoc.filesystem.writable).toEqual(['/other', '~/.pi'])
     expect(plainDoc.filesystem.virtual).toBeUndefined()
+  })
+  it('sees a legacy .dsh workspace policy after dsh-heimdall migrated it into .config', async () => {
+    // The dsh-heimdall guard plugin migrates-and-deletes legacy
+    // {,.pi,.omp}/heimdall.json files on ITS first load. Regression: the
+    // provider must find the sandbox section at the universal location the
+    // migration lands it in — never silently lose the workspace opt-in.
+    const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-wsp-'))
+    mkdirSync(join(root, '.dsh'), { recursive: true })
+    writeFileSync(join(root, '.dsh', 'heimdall.json'), JSON.stringify({
+      sandbox: { filesystem: { writable: ['/opt/toolchains'], deny: ['~/secret-project'] } },
+    }))
+
+    // Simulate the guard plugin's migrate pass (the provider's loader runs
+    // the same migration before reading universal locations).
+    migrateWorkspaceConfig(root)
+    const sandbox = await setup({ binaryPath: process.execPath })
+    const confined = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: root } as const)
+    const doc = JSON.parse(readFileSync(confined.argv[3]!, 'utf-8'))
+    expect(doc.filesystem.writable).toEqual([root, '~/.pi', '/opt/toolchains'])
+    expect(doc.filesystem.deny).toEqual([...DEFAULT_PRIVATE_PATHS, '~/secret-project'])
+    expect(existsSync(join(root, '.dsh', 'heimdall.json'))).toBe(false)
+
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('migrates a legacy user-global .dsh policy into ~/.config/heimdall and applies it', async () => {
+    const home = process.env.HOME!
+    mkdirSync(join(home, '.dsh'), { recursive: true })
+    writeFileSync(join(home, '.dsh', 'heimdall.json'), JSON.stringify({
+      sandbox: { gpgAgent: true, filesystem: { writable: ['/global/w'] } },
+    }))
+
+    const root = mkdtempSync(join(tmpdir(), 'dsh-heimdall-wsp-'))
+    const sandbox = await setup({ binaryPath: process.execPath })
+    const confined = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: root } as const)
+    const doc = JSON.parse(readFileSync(confined.argv[3]!, 'utf-8'))
+    expect(doc.filesystem.writable).toEqual([root, '~/.pi', '/global/w'])
+    expect(doc.gpgAgent).toBe(true)
+    // migration happened under the provider's loader
+    expect(existsSync(join(home, '.dsh', 'heimdall.json'))).toBe(false)
+    expect(existsSync(join(home, '.config', 'heimdall', 'config.json'))).toBe(true)
+
+    rmSync(join(home, '.config', 'heimdall', 'config.json'), { force: true })
+    rmSync(root, { recursive: true, force: true })
+  })
+
+  it('fails loudly on a malformed user-level universal config', async () => {
+    const home = process.env.HOME!
+    mkdirSync(join(home, '.config', 'heimdall'), { recursive: true })
+    writeFileSync(join(home, '.config', 'heimdall', 'config.json'), '{ nope')
+
+    const sandbox = await setup({ binaryPath: process.execPath })
+    expect(() => sandbox.confine(['true'], WW)).toThrow(/invalid JSON/)
+
+    rmSync(join(home, '.config', 'heimdall', 'config.json'), { force: true })
+  })
+
+  it('generates default.jsonc on a fresh home and confines with the 44-entry corpus', async () => {
+    const home = process.env.HOME!
+    // Fresh home: no ~/.config/heimdall at all. confine() must regenerate
+    // the corpus file and fold it as the most-general layer.
+    const sandbox = await setup({ binaryPath: process.execPath })
+    const confined = sandbox.confine(['true'], { mode: 'workspace-write', workspaceRoot: '/ws' } as const)
+    const doc = JSON.parse(readFileSync(confined.argv[3]!, 'utf-8'))
+
+    const defaultPath = join(home, '.config', 'heimdall', 'default.jsonc')
+    expect(existsSync(defaultPath)).toBe(true)
+    // default.jsonc is JSONC (leading comments) — strip before parsing
+    const generated = JSON.parse(
+      readFileSync(defaultPath, 'utf-8').split('\n').filter((line) => !line.trimStart().startsWith('//')).join('\n'),
+    ).sandbox
+    expect(generated.useDefaultFilesystemDeny).toBe(true)
+    expect(generated.filesystem.writable).toEqual(['~/.pi'])
+    // 44 entries — a dropped or renamed entry (e.g. `~/.config`) is a
+    // silent sandbox widening, so the count AND the content are pinned.
+    expect(generated.filesystem.deny).toHaveLength(44)
+    expect(generated.filesystem.deny).toContain('~/.config')
+    expect(doc.filesystem.deny).toEqual(generated.filesystem.deny)
+    expect(doc.filesystem.writable).toEqual(['/ws', '~/.pi'])
+    expect(doc.sshAgent).toBe(false)
   })
 })
 

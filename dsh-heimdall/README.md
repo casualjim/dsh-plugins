@@ -32,24 +32,29 @@ Restart the profile for the host row to activate.
 
 ## Configuration
 
-Row config (in `cordis.patch.yml`) is deep-merged over the DSH-native
-`<workspaceRoot>/.dsh/heimdall.json` (plain JSON) at the session workspace
-root — the same file the dsh-heimdall-sandbox provider reads. The workspace
-file overrides scalars and appends arrays, so per-repo `commandPolicies`
-accumulate on top of the deployment config.
+Row config (in `cordis.patch.yml`) is deep-merged over the universal heimdall
+config chain: `~/.config/heimdall/default.jsonc` (GENERATED deny corpus,
+regenerated on every load — never hand-edit), `~/.config/heimdall/config.json(c)`
+(user level), and `<workspaceRoot>/.config/heimdall.json(c)` (per workspace).
+Legacy `.pi/.omp/.dsh` heimdall files — user and workspace level — are
+migrated (merged, written to the universal location, deleted) on first load
+and never read as a fallback. The files are multi-plugin: dsh-heimdall-sandbox
+reads the `sandbox` section from the same chain, so all harnesses share one
+understanding of what they can and can't touch.
 
 ```jsonc
 {
   // These guard ids are opt-out.
   "disabled": ["env-protect", "kubectl-secret-guard"],
   "commandPolicies": [],
-  "dotenv": ".env.json"
+  "dotenv": ".env.json",
+  "sandbox": { /* consumed by dsh-heimdall-sandbox */ }
 }
 ```
 
 ### command-policy-guard
 
-Repo-specific command policies from `<workspaceRoot>/.dsh/heimdall.json`:
+Repo-specific command policies from the universal config chain:
 
 ```jsonc
 {

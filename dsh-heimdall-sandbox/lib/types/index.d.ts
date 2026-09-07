@@ -11,11 +11,16 @@
  *
  * The full pi-heimdall policy fragment (network, proc, env, filesystem
  * deny/writable/virtual, SSH/GnuPG/age agent sockets) is the config format,
- * verbatim — no renamed aliases. It merges from the deployment config, the
- * `projects` map, and the `sandbox` section of the per-workspace
- * `.dsh/heimdall.json` file (a multi-plugin file shared with dsh-heimdall's
- * `commandPolicies`) — lists append, scalars take the most specific layer
- * that defines them, absent fields stay at binary defaults.
+ * verbatim — no renamed aliases. File layers come from the universal heimdall
+ * config chain through dsh-heimdall's loader (`dsh-heimdall/config`): the
+ * `sandbox` sections of `~/.config/heimdall/config.json(c)` and
+ * `<workspaceRoot>/.config/heimdall.json(c)`, parsed, merged, and migrated by
+ * the one shared implementation — this package owns no parser and no merge.
+ * The workspace file IS the opt-in: committing `.config/heimdall.json` lets
+ * the repo widen its own writables to any path not covered by the global deny
+ * corpus (global deny still beats every writable). Malformed content fails
+ * loudly — a silently ignored sandbox grant is a misconfiguration, not a
+ * fallback.
  *
  * Enforcement is reported as `full`: macOS runs Seatbelt, Linux bubblewrap,
  * both closed-by-default. Since 0.2.0 denied reads FAIL (EPERM) instead of
@@ -32,8 +37,9 @@ import { type PolicyOptions } from './policy.ts';
 /**
  * Plugin config. All optional — `static Config` supplies the defaults.
  * Every policy-fragment field below is also valid inside a `projects`
- * entry and inside the `sandbox` section of the workspace
- * `.dsh/heimdall.json` file.
+ * entry and inside the `sandbox` section of the universal heimdall config
+ * files (`~/.config/heimdall/config.json(c)` and
+ * `<workspaceRoot>/.config/heimdall.json(c)`).
  */
 export interface Config extends PolicyOptions {
     /**
@@ -52,18 +58,11 @@ export interface Config extends PolicyOptions {
 }
 /**
  * Alias for {@link PolicyOptions} — the per-project layer shape. Exactly one
- * shape everywhere: deployment config, project entries, workspace file.
+ * shape everywhere: deployment config, project entries, universal files.
  */
 export type ProjectOverrides = PolicyOptions;
 /** Locate the heimdall-sandbox binary: config, then npm wrapper, then PATH. */
 export declare function resolveBinaryPath(configured: string | undefined): string;
-/**
- * Fold policy layers most-general first: lists concatenate, virtual mounts
- * merge by key, scalars (`network`, `proc`, agent flags, env lists) take
- * the most specific layer that defines them. Absent fields stay absent —
- * the binary decides their defaults.
- */
-export declare function mergeOptions(...layers: (PolicyOptions | undefined)[]): PolicyOptions;
 export declare class HeimdallSandboxProvider extends SandboxProvider {
     static Config: z<Config>;
     private readonly options;

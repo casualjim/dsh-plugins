@@ -269,8 +269,11 @@ importers:
   dsh-heimdall-sandbox:
     dependencies:
       '@casualjim/heimdall-sandbox':
-        specifier: 0.2.5
-        version: 0.2.5
+        specifier: 0.2.6
+        version: 0.2.6
+      dsh-heimdall:
+        specifier: workspace:*
+        version: link:../dsh-heimdall
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: ^4.0.1
@@ -389,26 +392,26 @@ importers:
 
 packages:
 
-  '@casualjim/heimdall-sandbox-darwin-arm64@0.2.5':
-    resolution: {integrity: sha512-Chtp/AuU7E/nys76HGEkc2v+HRGz3Glm4Pe9PM3G+uZ732cd52YvR4FT1/7f56AygQua5Byx+IzCu85HxtLJ0Q==}
+  '@casualjim/heimdall-sandbox-darwin-arm64@0.2.6':
+    resolution: {integrity: sha512-dAdATPTyWXZf8OIIjbDLq4XI06uNTNdvoh2sI/k3Xd1qJiDKNQheyR7piPxKjxeGs0+t1S80l+w4+gTo4UaXuw==}
     cpu: [arm64]
     os: [darwin]
     hasBin: true
 
-  '@casualjim/heimdall-sandbox-linux-arm64@0.2.5':
-    resolution: {integrity: sha512-heyi5ArFq5bbaHjA/wduNvMlzKahJodsOzpCFN/PWCm8CJ695HGMVq7Qno5QuC9u2lJlNZdiiO8hJAJd53tKpA==}
+  '@casualjim/heimdall-sandbox-linux-arm64@0.2.6':
+    resolution: {integrity: sha512-yq7wU3xq4s5TQR5Hii6A7ljVniUZhWPNA12FqDuVCfAL/a4xWV0Hg9HQZk02bNj042PWy7xAv67Zi98WMKphBA==}
     cpu: [arm64]
     os: [linux]
     hasBin: true
 
-  '@casualjim/heimdall-sandbox-linux-x64@0.2.5':
-    resolution: {integrity: sha512-FYtFWTXo4+nMVa0JZKLwYx3PsU4HUdrsekQyVQvn+3UwL7FTNfFDlJV+4gwCLQHRk4ZTSVUF7Z8ZF99ZebAz+Q==}
+  '@casualjim/heimdall-sandbox-linux-x64@0.2.6':
+    resolution: {integrity: sha512-e9pIr7JC0nwCiNpteSlpkxhl8nxZofxsLP0E2MS8kB0LRVNfWMth4HCwtf5x7CzpYpyoCoqzqKMgUDe43DYcoA==}
     cpu: [x64]
     os: [linux]
     hasBin: true
 
-  '@casualjim/heimdall-sandbox@0.2.5':
-    resolution: {integrity: sha512-bhyIrfo2KOjRXnMHh/Fd941ItLBCfB5O0o+pZ9fUsp45x2tl2nONe94I1c8NLMF30wZ8m544V6Uc0OPNI2yyhw==}
+  '@casualjim/heimdall-sandbox@0.2.6':
+    resolution: {integrity: sha512-wBw8896h8iV4xlPrWmbVhlBOy6bbgRMv1o5XonJhBkwj+fbEhEc8sqan4qlQrHl9Ndn7r18DXVvfUyTm6fWUCg==}
     hasBin: true
 
   '@deepseek-ai/cordis-plugin-include@1.0.6':
@@ -2208,20 +2211,20 @@ packages:
 
 snapshots:
 
-  '@casualjim/heimdall-sandbox-darwin-arm64@0.2.5':
+  '@casualjim/heimdall-sandbox-darwin-arm64@0.2.6':
     optional: true
 
-  '@casualjim/heimdall-sandbox-linux-arm64@0.2.5':
+  '@casualjim/heimdall-sandbox-linux-arm64@0.2.6':
     optional: true
 
-  '@casualjim/heimdall-sandbox-linux-x64@0.2.5':
+  '@casualjim/heimdall-sandbox-linux-x64@0.2.6':
     optional: true
 
-  '@casualjim/heimdall-sandbox@0.2.5':
+  '@casualjim/heimdall-sandbox@0.2.6':
     optionalDependencies:
-      '@casualjim/heimdall-sandbox-darwin-arm64': 0.2.5
-      '@casualjim/heimdall-sandbox-linux-arm64': 0.2.5
-      '@casualjim/heimdall-sandbox-linux-x64': 0.2.5
+      '@casualjim/heimdall-sandbox-darwin-arm64': 0.2.6
+      '@casualjim/heimdall-sandbox-linux-arm64': 0.2.6
+      '@casualjim/heimdall-sandbox-linux-x64': 0.2.6
 
   '@deepseek-ai/cordis-plugin-include@1.0.6(@deepseek-ai/cordis-plugin-loader@1.0.2)(@deepseek-ai/cordis@4.0.1)':
     dependencies:

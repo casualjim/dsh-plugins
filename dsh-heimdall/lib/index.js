@@ -17,8 +17,9 @@
  * carrying text content, before the model-facing `tools/result` materialization
  * and the durable transcript record.
  *
- * Config: row config deep-merged over `.pi/heimdall.jsonc` at the session
- * workspace root. Secret keys come from `.env.json` at the workspace root;
+ * Config: row config deep-merged over `~/.config/heimdall/config.json(c)` and
+ * `<workspaceRoot>/.config/heimdall.json(c)` at the session workspace root.
+ * Secret keys come from `.env.json` at the workspace root;
  * actual values are captured from `process.env`.
  *
  * @module dsh-heimdall

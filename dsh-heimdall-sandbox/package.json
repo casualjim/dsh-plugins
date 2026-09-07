@@ -26,7 +26,8 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@casualjim/heimdall-sandbox": "0.2.5"
+    "@casualjim/heimdall-sandbox": "0.2.6",
+    "dsh-heimdall": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",

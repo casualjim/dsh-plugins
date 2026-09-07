@@ -11,11 +11,16 @@
  *
  * The full pi-heimdall policy fragment (network, proc, env, filesystem
  * deny/writable/virtual, SSH/GnuPG/age agent sockets) is the config format,
- * verbatim — no renamed aliases. It merges from the deployment config, the
- * `projects` map, and the `sandbox` section of the per-workspace
- * `.dsh/heimdall.json` file (a multi-plugin file shared with dsh-heimdall's
- * `commandPolicies`) — lists append, scalars take the most specific layer
- * that defines them, absent fields stay at binary defaults.
+ * verbatim — no renamed aliases. File layers come from the universal heimdall
+ * config chain through dsh-heimdall's loader (`dsh-heimdall/config`): the
+ * `sandbox` sections of `~/.config/heimdall/config.json(c)` and
+ * `<workspaceRoot>/.config/heimdall.json(c)`, parsed, merged, and migrated by
+ * the one shared implementation — this package owns no parser and no merge.
+ * The workspace file IS the opt-in: committing `.config/heimdall.json` lets
+ * the repo widen its own writables to any path not covered by the global deny
+ * corpus (global deny still beats every writable). Malformed content fails
+ * loudly — a silently ignored sandbox grant is a misconfiguration, not a
+ * fallback.
  *
  * Enforcement is reported as `full`: macOS runs Seatbelt, Linux bubblewrap,
  * both closed-by-default. Since 0.2.0 denied reads FAIL (EPERM) instead of
@@ -25,12 +30,13 @@
  * @module dsh-heimdall-sandbox
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { homedir, tmpdir } from 'node:os';
+import { mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import z from '@deepseek-ai/schemastery';
 import { SandboxProvider } from '@deepseek-ai/dsh-sandbox';
+import { loadSandboxSections, mergeSandboxOptions } from 'dsh-heimdall/config';
 import { buildPolicyDocument } from "./policy.js";
 /** The stderr dialect a kernel denial produces under the platform's backend. */
 const DENIAL_SIGNATURES = {
@@ -95,93 +101,6 @@ function matchProject(projects, root) {
         }
     }
     return best;
-}
-/**
- * The `sandbox` section of a multi-plugin heimdall.json file (pi-heimdall
- * {@link PolicyOptions} fragment, plain JSON); `undefined` when the file or
- * the section is absent. The file IS the opt-in: committing it lets the repo
- * widen its own writables to any path not covered by the global deny corpus
- * (global deny still beats every writable). Malformed content fails loudly —
- * a silently ignored sandbox grant is a misconfiguration, not a fallback.
- */
-function readPolicyFile(path) {
-    let raw;
-    try {
-        raw = readFileSync(path, 'utf-8');
-    }
-    catch (err) {
-        if (err.code === 'ENOENT')
-            return undefined;
-        throw new Error(`heimdall-sandbox: cannot read ${path}: ${err.message}`);
-    }
-    let parsed;
-    try {
-        parsed = JSON.parse(raw);
-    }
-    catch {
-        throw new Error(`heimdall-sandbox: invalid JSON in ${path}`);
-    }
-    if (parsed.sandbox === undefined)
-        return undefined;
-    if (typeof parsed.sandbox !== 'object' || parsed.sandbox === null || Array.isArray(parsed.sandbox)) {
-        throw new Error(`heimdall-sandbox: ${path}: "sandbox" section must be a policy fragment object`);
-    }
-    return parsed.sandbox;
-}
-/** User-global layer: the `sandbox` section of `~/.dsh/heimdall.json`. */
-function readGlobalPolicy() {
-    return readPolicyFile(join(homedir(), '.dsh', 'heimdall.json'));
-}
-/** Per-workspace layer: the `sandbox` section of `<workspaceRoot>/.dsh/heimdall.json`. */
-function readWorkspacePolicy(root) {
-    return readPolicyFile(join(root, '.dsh', 'heimdall.json'));
-}
-/**
- * Fold policy layers most-general first: lists concatenate, virtual mounts
- * merge by key, scalars (`network`, `proc`, agent flags, env lists) take
- * the most specific layer that defines them. Absent fields stay absent —
- * the binary decides their defaults.
- */
-export function mergeOptions(...layers) {
-    const merged = {};
-    for (const layer of layers) {
-        if (!layer)
-            continue;
-        if (layer.filesystem?.deny?.length) {
-            merged.filesystem = {
-                ...merged.filesystem,
-                deny: [...(merged.filesystem?.deny ?? []), ...layer.filesystem.deny],
-            };
-        }
-        if (layer.filesystem?.writable?.length) {
-            merged.filesystem = {
-                ...merged.filesystem,
-                writable: [...(merged.filesystem?.writable ?? []), ...layer.filesystem.writable],
-            };
-        }
-        if (layer.filesystem?.virtual && Object.keys(layer.filesystem.virtual).length) {
-            merged.filesystem = {
-                ...merged.filesystem,
-                virtual: { ...merged.filesystem?.virtual, ...layer.filesystem.virtual },
-            };
-        }
-        const allow = [...(merged.env?.allow ?? []), ...(layer.env?.allow ?? [])];
-        const deny = [...(merged.env?.deny ?? []), ...(layer.env?.deny ?? [])];
-        if (allow.length || deny.length) {
-            merged.env = { ...(allow.length && { allow }), ...(deny.length && { deny }) };
-        }
-        if (layer.network !== undefined)
-            merged.network = layer.network;
-        if (layer.proc !== undefined)
-            merged.proc = layer.proc;
-        if (layer.sshAgent !== undefined)
-            merged.sshAgent = layer.sshAgent;
-        if (layer.gpgAgent !== undefined)
-            merged.gpgAgent = layer.gpgAgent;
-        if (layer.ageAgent !== undefined)
-            merged.ageAgent = layer.ageAgent;
-    }
-    return merged;
 }
 export class HeimdallSandboxProvider extends SandboxProvider {
     // Inline schema call: the config catalog walks `static Config` statically.
@@ -250,14 +169,15 @@ export class HeimdallSandboxProvider extends SandboxProvider {
         ctx.effect(() => dispose);
     }
     confine(argv, policy) {
-        // Layer order (each merges over the previous): plugin definition +
-        // profile cordis.patch.yaml (already folded into this.options by the
-        // DSH loader), the matched `projects` entry, `~/.dsh/heimdall.json`,
-        // `<workspaceRoot>/.dsh/heimdall.json`.
+        // Layer order (each merges over the previous): the GENERATED default
+        // deny corpus (`default.jsonc`, regenerated by the loader — the
+        // deployment row and profile patch carry no corpus), the deployment
+        // row, the matched `projects` entry, then the `sandbox` sections of the
+        // universal user level and workspace file — loaded, migrated, and
+        // folded by dsh-heimdall's shared config implementation.
+        const { defaults, user, workspace } = loadSandboxSections(policy.workspaceRoot);
         const override = matchProject(this.projects, policy.workspaceRoot);
-        const global = readGlobalPolicy();
-        const workspace = readWorkspacePolicy(policy.workspaceRoot);
-        const options = mergeOptions(this.options, override, global, workspace);
+        const options = mergeSandboxOptions(defaults, this.options, override, user, workspace);
         const document = buildPolicyDocument(argv, policy, options);
         const dir = mkdtempSync(join(tmpdir(), 'dsh-heimdall-'));
         this.policyDirs.add(dir);
