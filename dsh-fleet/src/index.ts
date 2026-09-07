@@ -18,6 +18,7 @@ export const inject = ["webServer"];
 interface FleetContext {
   webServer: { register: (route: unknown) => () => void };
   effect: (fn: () => () => void) => void;
+  inject?: (names: string[], fn: (c: Record<string, unknown>) => void) => void;
   logger?: { info: (...a: unknown[]) => void; warn: (...a: unknown[]) => void };
 }
 
@@ -45,9 +46,25 @@ export function apply(ctx: FleetContext): void {
   let node: FleetNode | undefined;
   let disposers: Array<() => void> = [];
 
+  // The dsh web GUI now requires browser auth (client-connection launch
+  // token). Peers need OUR token to open this node's GUI; grab it from the
+  // connection service once it loads.
+  let launchToken: string | undefined;
+  if (typeof ctx.inject === "function") {
+    ctx.inject(["connection"], (c) => {
+      const auth = (c.connection as { authenticatedUrl?: (b: string) => string } | undefined)?.authenticatedUrl;
+      if (typeof auth !== "function") return;
+      try {
+        const url = new URL(auth.call(c.connection, "http://dsh.invalid"));
+        const token = url.searchParams.get("token");
+        if (token !== null && token !== "") launchToken = token;
+      } catch { /* connection service unavailable */ }
+    });
+  }
+
   ctx.effect(() => {
     let cancelled = false;
-    const fleet = new FleetNode(config, log);
+    const fleet = new FleetNode(config, log, () => launchToken);
     fleet.start()
       .then(() => {
         if (cancelled) { void fleet.stop(); return; }

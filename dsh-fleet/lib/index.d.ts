@@ -8,6 +8,7 @@ interface FleetContext {
         register: (route: unknown) => () => void;
     };
     effect: (fn: () => () => void) => void;
+    inject?: (names: string[], fn: (c: Record<string, unknown>) => void) => void;
     logger?: {
         info: (...a: unknown[]) => void;
         warn: (...a: unknown[]) => void;

@@ -72,6 +72,7 @@ interface Peer {
   conn?: Connection;
   gatewayPort?: number;
   gatewayServer?: net.Server;
+  token?: string;
   retryTimer?: ReturnType<typeof setTimeout>;
   backoffMs?: number;
 }
@@ -83,7 +84,17 @@ export class FleetNode {
   private selfId = "";
   private stopped = false;
 
-  constructor(private readonly config: FleetConfig, private readonly log: (...a: unknown[]) => void) {}
+  constructor(
+    private readonly config: FleetConfig,
+    private readonly log: (...a: unknown[]) => void,
+    private readonly launchToken?: () => string | undefined,
+  ) {}
+
+  /** Set once the connection service loads; undefined before that. */
+  private homeUrl(): string | undefined {
+    const token = this.launchToken?.();
+    return token === undefined ? undefined : "http://127.0.0.1:" + String(this.config.dsh_port) + "/?token=" + token;
+  }
 
   private proof(id: string): string {
     return createHmac("sha256", Buffer.from(this.config.secret, "hex")).update(id).digest("hex");
@@ -101,6 +112,7 @@ export class FleetNode {
       t: "hello", id: this.selfId, name: this.config.name,
       dsh_port: this.config.dsh_port, proof: this.proof(this.selfId),
       ticket: this.invite(),
+      token: this.launchToken?.(),
     });
   }
 
@@ -146,7 +158,7 @@ export class FleetNode {
       id: p.id, name: p.name, dsh_port: p.dshPort,
       online: p.conn !== undefined, gateway_port: p.gatewayPort ?? null,
     }));
-    return { self: { id: this.selfId, name: this.config.name, dsh_port: this.config.dsh_port }, peers };
+    return { self: { id: this.selfId, name: this.config.name, dsh_port: this.config.dsh_port }, home_url: this.homeUrl() ?? null, peers };
   }
 
   async addPeer(ticket: string): Promise<void> {
@@ -215,11 +227,11 @@ export class FleetNode {
     this.log("removed " + peer.name);
   }
 
-  async dial(id: string): Promise<number> {
+  async dial(id: string): Promise<{ port: number; token?: string }> {
     const peer = this.peers.get(id);
     if (peer === undefined) throw new Error("unknown peer");
     if (peer.conn === undefined) throw new Error("peer offline");
-    if (peer.gatewayPort !== undefined && peer.gatewayServer !== undefined) return peer.gatewayPort;
+    if (peer.gatewayPort !== undefined && peer.gatewayServer !== undefined) return { port: peer.gatewayPort, token: peer.token };
     const port = await this.findFreePort();
     const conn = peer.conn;
     const server = net.createServer((socket) => {
@@ -239,7 +251,7 @@ export class FleetNode {
     peer.gatewayPort = port;
     peer.gatewayServer = server;
     this.log("gateway " + peer.name + " on 127.0.0.1:" + String(port));
-    return port;
+    return { port, token: peer.token };
   }
 
   private async findFreePort(): Promise<number> {
@@ -307,13 +319,14 @@ export class FleetNode {
       const bi = await conn.openBi();
       await writeLine(bi.send, this.selfHello());
       const line = await readLine(bi.recv);
-      const hello = JSON.parse(line) as { t?: string; name?: string; dsh_port?: number; proof?: string };
+      const hello = JSON.parse(line) as { t?: string; name?: string; dsh_port?: number; proof?: string; token?: string };
       const remoteId = conn.remoteId().toString();
       if (hello.t !== "hello" || !this.verify(remoteId, String(hello.proof ?? ""))) {
         await conn.close(1n, Array.from(new TextEncoder().encode("bad proof")));
         throw new Error("peer hello rejected");
       }
       this.upsertPeer(remoteId, String(hello.name ?? "peer"), Number(hello.dsh_port ?? 3080), conn, ticket.trim());
+      this.peers.get(remoteId)!.token = typeof hello.token === "string" ? hello.token : undefined;
       await writeLine(bi.send, this.rosterFrame());
       void this.ctrlLoop(remoteId, bi.recv, conn);
       void this.tunnelAcceptLoop(remoteId, conn);
@@ -367,7 +380,7 @@ export class FleetNode {
     const remoteId = conn.remoteId().toString();
     const ctrl = await conn.acceptBi();
     const line = await readLine(ctrl.recv);
-    const hello = JSON.parse(line) as { t?: string; name?: string; dsh_port?: number; proof?: string; ticket?: string };
+    const hello = JSON.parse(line) as { t?: string; name?: string; dsh_port?: number; proof?: string; ticket?: string; token?: string };
     if (hello.t !== "hello" || !this.verify(remoteId, String(hello.proof ?? ""))) {
       await conn.close(1n, Array.from(new TextEncoder().encode("bad proof")));
       return;
@@ -377,6 +390,7 @@ export class FleetNode {
     const ticket = typeof hello.ticket === "string" ? hello.ticket : undefined;
     if (ticket !== undefined) this.persistTicket(ticket);
     this.upsertPeer(remoteId, String(hello.name ?? "peer"), Number(hello.dsh_port ?? 3080), conn, ticket);
+    this.peers.get(remoteId)!.token = typeof hello.token === "string" ? hello.token : undefined;
     await writeLine(ctrl.send, this.selfHello());
     await writeLine(ctrl.send, this.rosterFrame());
     void this.ctrlLoop(remoteId, ctrl.recv, conn);

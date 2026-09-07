@@ -8,9 +8,9 @@
  *   - "settings.section" list cell: Fleet settings page (pairing, devices).
  *
  * Status refresh is one fetch every 5s while the sidebar is mounted, bounded
- * by React lifecycle. On a peer gateway origin the page is served through the
- * tunnel, so the self row navigates to the remembered local origin
- * (localStorage "dsh-fleet:home") instead of a peer-relative "/".
+ * by React lifecycle. The dsh web GUI requires browser auth, so switching
+ * nodes navigates with the peer's launch token (?token=) — delivered over
+ * the mesh inside the hello frame — and the home row uses status.home_url.
  *
  * Failure policy: warn only, never break the GUI.
  */
@@ -33,6 +33,7 @@ interface PeerView {
 
 interface FleetStatus {
   self: { id: string; name: string; dsh_port: number };
+  home_url: string | null;
   peers: PeerView[];
 }
 
@@ -43,35 +44,22 @@ async function getJson(path: string, init?: RequestInit): Promise<unknown> {
   return body;
 }
 
-// Origin of this machine's own GUI. Remembered whenever we browse it
-// directly (location port === self dsh_port), and carried to peer pages as a
-// ?fleet-home= query param — localStorage is per-origin, so a page served
-// through a peer gateway (127.0.0.1:7900) shares no storage with the local
-// origin (127.0.0.1:3080) and could otherwise never navigate back.
+// Remembered origin of this machine's own GUI (location port === self
+// dsh_port when browsing it directly). Fallback only — the home row prefers
+// status.home_url, which carries the auth token.
 const HOME_KEY = "dsh-fleet:home";
 function homeHref(): string {
   try { return localStorage.getItem(HOME_KEY) ?? window.location.origin; }
   catch { return window.location.origin; }
 }
 
-/** Consume ?fleet-home= from the URL (if present) and remember it locally. */
-function captureHomeParam(): void {
-  try {
-    const url = new URL(window.location.href);
-    const home = url.searchParams.get("fleet-home");
-    if (home === null) return;
-    url.searchParams.delete("fleet-home");
-    window.history.replaceState(null, "", url.toString());
-    localStorage.setItem(HOME_KEY, home);
-  } catch { /* private mode / stubbed window */ }
-}
-
 async function pick(peer: PeerView): Promise<void> {
   if (peer.online !== true) return;
   try {
-    const out = (await getJson(API.dial, { method: "POST", body: JSON.stringify({ id: peer.id }) })) as { port: number };
-    // carry the remembered home so the peer page can navigate back
-    window.location.href = "http://127.0.0.1:" + String(out.port) + "/?fleet-home=" + encodeURIComponent(homeHref());
+    const out = (await getJson(API.dial, { method: "POST", body: JSON.stringify({ id: peer.id }) })) as { port: number; token?: string };
+    // the peer's GUI requires its launch token; the token hop mints the
+    // browser cookie, later visits to the same gateway port reuse it
+    window.location.href = "http://127.0.0.1:" + String(out.port) + "/" + (out.token !== undefined && out.token !== "" ? "?token=" + encodeURIComponent(out.token) : "");
   } catch (error) {
     console.warn("[dsh-fleet] dial failed:", error);
   }
@@ -94,7 +82,6 @@ function FleetFooterAction({ wide }: { wide: boolean }): React.ReactElement {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
 
   React.useEffect(() => {
-    captureHomeParam();
     let alive = true;
     const tick = () => {
       getJson(API.status)
@@ -135,11 +122,11 @@ function FleetFooterAction({ wide }: { wide: boolean }): React.ReactElement {
   },
     React.createElement("div", { style: { fontSize: 11, opacity: 0.55, padding: "4px 8px" } }, "fleet instances"),
     React.createElement("button", {
-      onClick: () => { setOpen(false); window.location.href = homeHref(); },
+      onClick: () => { setOpen(false); window.location.href = status?.home_url ?? homeHref(); },
       style: menuItemStyle,
     },
       React.createElement("span", { style: { ...dotStyle, background: "#4ade80" } }),
-      React.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, (status?.self.name ?? "local") + " \u00b7 local"),
+      React.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, status?.self.name ?? "local"),
     ),
     peers.map((peer) => React.createElement("button", {
       key: peer.id,

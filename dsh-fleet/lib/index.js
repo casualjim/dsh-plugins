@@ -36,14 +36,21 @@ function saveConfig(config) {
 var FleetNode = class {
   config;
   log;
+  launchToken;
   endpoint;
   peers = /* @__PURE__ */ new Map();
   dialing = /* @__PURE__ */ new Map();
   selfId = "";
   stopped = false;
-  constructor(config, log) {
+  constructor(config, log, launchToken) {
     this.config = config;
     this.log = log;
+    this.launchToken = launchToken;
+  }
+  /** Set once the connection service loads; undefined before that. */
+  homeUrl() {
+    const token = this.launchToken?.();
+    return token === void 0 ? void 0 : "http://127.0.0.1:" + String(this.config.dsh_port) + "/?token=" + token;
   }
   proof(id) {
     return createHmac("sha256", Buffer.from(this.config.secret, "hex")).update(id).digest("hex");
@@ -61,7 +68,8 @@ var FleetNode = class {
       name: this.config.name,
       dsh_port: this.config.dsh_port,
       proof: this.proof(this.selfId),
-      ticket: this.invite()
+      ticket: this.invite(),
+      token: this.launchToken?.()
     });
   }
   async start() {
@@ -109,7 +117,7 @@ var FleetNode = class {
       online: p.conn !== void 0,
       gateway_port: p.gatewayPort ?? null
     }));
-    return { self: { id: this.selfId, name: this.config.name, dsh_port: this.config.dsh_port }, peers };
+    return { self: { id: this.selfId, name: this.config.name, dsh_port: this.config.dsh_port }, home_url: this.homeUrl() ?? null, peers };
   }
   async addPeer(ticket) {
     const trimmed = ticket.trim();
@@ -192,7 +200,7 @@ var FleetNode = class {
     if (peer.conn === void 0)
       throw new Error("peer offline");
     if (peer.gatewayPort !== void 0 && peer.gatewayServer !== void 0)
-      return peer.gatewayPort;
+      return { port: peer.gatewayPort, token: peer.token };
     const port = await this.findFreePort();
     const conn = peer.conn;
     const server = net.createServer((socket) => {
@@ -216,7 +224,7 @@ var FleetNode = class {
     peer.gatewayPort = port;
     peer.gatewayServer = server;
     this.log("gateway " + peer.name + " on 127.0.0.1:" + String(port));
-    return port;
+    return { port, token: peer.token };
   }
   async findFreePort() {
     for (let port = this.config.gateway_base; port < this.config.gateway_base + 100; port++) {
@@ -307,6 +315,7 @@ var FleetNode = class {
         throw new Error("peer hello rejected");
       }
       this.upsertPeer(remoteId, String(hello.name ?? "peer"), Number(hello.dsh_port ?? 3080), conn, ticket.trim());
+      this.peers.get(remoteId).token = typeof hello.token === "string" ? hello.token : void 0;
       await writeLine(bi.send, this.rosterFrame());
       void this.ctrlLoop(remoteId, bi.recv, conn);
       void this.tunnelAcceptLoop(remoteId, conn);
@@ -369,6 +378,7 @@ var FleetNode = class {
     if (ticket !== void 0)
       this.persistTicket(ticket);
     this.upsertPeer(remoteId, String(hello.name ?? "peer"), Number(hello.dsh_port ?? 3080), conn, ticket);
+    this.peers.get(remoteId).token = typeof hello.token === "string" ? hello.token : void 0;
     await writeLine(ctrl.send, this.selfHello());
     await writeLine(ctrl.send, this.rosterFrame());
     void this.ctrlLoop(remoteId, ctrl.recv, conn);
@@ -706,9 +716,24 @@ function apply(ctx) {
   }
   let node;
   let disposers = [];
+  let launchToken;
+  if (typeof ctx.inject === "function") {
+    ctx.inject(["connection"], (c) => {
+      const auth = c.connection?.authenticatedUrl;
+      if (typeof auth !== "function")
+        return;
+      try {
+        const url = new URL(auth.call(c.connection, "http://dsh.invalid"));
+        const token = url.searchParams.get("token");
+        if (token !== null && token !== "")
+          launchToken = token;
+      } catch {
+      }
+    });
+  }
   ctx.effect(() => {
     let cancelled = false;
-    const fleet = new FleetNode(config, log);
+    const fleet = new FleetNode(config, log, () => launchToken);
     fleet.start().then(() => {
       if (cancelled) {
         void fleet.stop();

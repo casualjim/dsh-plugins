@@ -206,22 +206,11 @@ window.__ModuleLoader__.load({
         return window.location.origin;
       }
     }
-    function captureHomeParam() {
-      try {
-        const url = new URL(window.location.href);
-        const home = url.searchParams.get("fleet-home");
-        if (home === null) return;
-        url.searchParams.delete("fleet-home");
-        window.history.replaceState(null, "", url.toString());
-        localStorage.setItem(HOME_KEY, home);
-      } catch {
-      }
-    }
     async function pick(peer) {
       if (peer.online !== true) return;
       try {
         const out = await getJson(API.dial, { method: "POST", body: JSON.stringify({ id: peer.id }) });
-        window.location.href = "http://127.0.0.1:" + String(out.port) + "/?fleet-home=" + encodeURIComponent(homeHref());
+        window.location.href = "http://127.0.0.1:" + String(out.port) + "/" + (out.token !== void 0 && out.token !== "" ? "?token=" + encodeURIComponent(out.token) : "");
       } catch (error) {
         console.warn("[dsh-fleet] dial failed:", error);
       }
@@ -252,7 +241,6 @@ window.__ModuleLoader__.load({
       const [open, setOpen] = import_react.default.useState(false);
       const rootRef = import_react.default.useRef(null);
       import_react.default.useEffect(() => {
-        captureHomeParam();
         let alive = true;
         const tick = () => {
           getJson(API.status).then((body) => {
@@ -307,12 +295,12 @@ window.__ModuleLoader__.load({
           {
             onClick: () => {
               setOpen(false);
-              window.location.href = homeHref();
+              window.location.href = status?.home_url ?? homeHref();
             },
             style: menuItemStyle
           },
           import_react.default.createElement("span", { style: { ...dotStyle, background: "#4ade80" } }),
-          import_react.default.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, (status?.self.name ?? "local") + " · local")
+          import_react.default.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, status?.self.name ?? "local")
         ),
         peers.map((peer) => import_react.default.createElement(
           "button",

@@ -13,12 +13,15 @@ export declare function saveConfig(config: FleetConfig): void;
 export declare class FleetNode {
     private readonly config;
     private readonly log;
+    private readonly launchToken?;
     private endpoint?;
     private readonly peers;
     private readonly dialing;
     private selfId;
     private stopped;
-    constructor(config: FleetConfig, log: (...a: unknown[]) => void);
+    constructor(config: FleetConfig, log: (...a: unknown[]) => void, launchToken?: (() => string | undefined) | undefined);
+    /** Set once the connection service loads; undefined before that. */
+    private homeUrl;
     private proof;
     private verify;
     private selfHello;
@@ -37,7 +40,10 @@ export declare class FleetNode {
     pair(code: string): Promise<void>;
     /** Drop a device: peer entry, gateway, persisted ticket. */
     removePeer(id: string): void;
-    dial(id: string): Promise<number>;
+    dial(id: string): Promise<{
+        port: number;
+        token?: string;
+    }>;
     private findFreePort;
     /**
      * Event-driven liveness: resolves when the connection closes; clears state
