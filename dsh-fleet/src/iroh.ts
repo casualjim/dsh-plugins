@@ -352,8 +352,12 @@ export class FleetNode {
       this.writeHttp(socket, 411, JSON.stringify({ error: "chunked request bodies are not bridged" }));
       return false;
     }
+    // The harness routes websocket upgrades through node's 'upgrade'
+    // event, which requires Connection: Upgrade on the wire — a forced
+    // close here silently drops the whole session/streams surface.
+    const upgrade = (headers["upgrade"] ?? "").toLowerCase() === "websocket";
     delete headers["connection"];
-    headers["connection"] = "close";
+    headers["connection"] = upgrade ? "Upgrade" : "close";
 
     // resolve the LIVE conn per request — the gateway may outlive a
     // recycled connection
@@ -384,7 +388,9 @@ export class FleetNode {
       }
       await bi.send.writeAll(Array.from(Buffer.from(lines.join("\r\n") + "\r\n\r\n", "latin1")));
       if (body.length > 0) await bi.send.writeAll(Array.from(body));
-      await bi.send.finish().catch(() => {});
+      // A websocket upgrade keeps this direction open for frames; anything
+      // else may FIN once the request is written.
+      if (!upgrade) await bi.send.finish().catch(() => {});
     } catch (error) {
       this.log("gateway " + peer.name + " send: " + errorMessage(error));
       detach();
@@ -692,13 +698,16 @@ export class FleetNode {
   private async relayTunnel(bi: { send: SendStream; recv: RecvStream }): Promise<void> {
     try {
       const socket = await net.connect({ host: "127.0.0.1", port: this.config.dsh_port });
-      // The gateway FINs its send side right after the request head. Ending
-      // this socket in lockstep FINs the harness mid-request, and the
-      // harness answers an early-FIN authenticated request with a silent
-      // close ("peer did not answer"). Every bridged request carries
-      // connection: close, so the harness closes the socket itself after
-      // responding — nothing here needs to end it.
-      pump(socket, bi.send, bi.recv, false);
+      // Peek the request head to pick the close semantics. Plain HTTP: the
+      // gateway FINs its send side right after the head, and ending this
+      // socket in lockstep FINs the harness mid-request — the harness
+      // answers an early-FIN authenticated request with a silent close
+      // ("peer did not answer"); connection: close makes the harness end
+      // the socket itself after responding. Websocket upgrade: propagate
+      // the gateway's FIN so the harness learns the browser left.
+      const { head, stream } = await peekRecvHead(bi.recv);
+      const upgrade = /\bupgrade:\s*websocket\b/i.test(head);
+      pump(socket, bi.send, stream, upgrade);
     } catch (error) {
       this.log("tunnel connect failed: " + errorMessage(error));
       try { await bi.send.reset(1n); } catch { /* already dead */ }
@@ -724,6 +733,32 @@ async function readLine(recv: RecvStream): Promise<string> {
     if (out.length > 8192) throw new Error("ctrl line too long");
   }
   return new TextDecoder().decode(Uint8Array.from(out));
+}
+
+/** Read the HTTP request head of one tunnel stream, handing back a stream
+ * that replays the consumed bytes first (the head rides into the pump). */
+async function peekRecvHead(recv: RecvStream): Promise<{ head: string; stream: RecvStream }> {
+  const out: number[] = [];
+  for (;;) {
+    const chunk = await recv.read(1);
+    if (chunk.length === 0) break;
+    out.push(chunk[0]);
+    if (out.length > 65536) break;
+    const n = out.length;
+    if (n >= 4 && out[n - 4] === 13 && out[n - 3] === 10 && out[n - 2] === 13 && out[n - 1] === 10) break;
+  }
+  let pos = 0;
+  const stream = {
+    async read(sizeLimit: number): Promise<number[]> {
+      if (pos < out.length) {
+        const next = out.slice(pos, pos + sizeLimit);
+        pos += next.length;
+        return next;
+      }
+      return recv.read(sizeLimit);
+    },
+  } as unknown as RecvStream;
+  return { head: Buffer.from(out).toString("latin1"), stream };
 }
 
 function pump(socket: net.Socket, send: SendStream, recv: RecvStream, endOnEof = true): void {

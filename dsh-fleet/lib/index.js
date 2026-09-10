@@ -542,8 +542,9 @@ var FleetNode = class {
       this.writeHttp(socket, 411, JSON.stringify({ error: "chunked request bodies are not bridged" }));
       return false;
     }
+    const upgrade = (headers["upgrade"] ?? "").toLowerCase() === "websocket";
     delete headers["connection"];
-    headers["connection"] = "close";
+    headers["connection"] = upgrade ? "Upgrade" : "close";
     const conn = peer.conn;
     if (conn === void 0) {
       detach();
@@ -574,8 +575,9 @@ var FleetNode = class {
       await bi.send.writeAll(Array.from(Buffer.from(lines.join("\r\n") + "\r\n\r\n", "latin1")));
       if (body.length > 0)
         await bi.send.writeAll(Array.from(body));
-      await bi.send.finish().catch(() => {
-      });
+      if (!upgrade)
+        await bi.send.finish().catch(() => {
+        });
     } catch (error) {
       this.log("gateway " + peer.name + " send: " + errorMessage(error));
       detach();
@@ -902,7 +904,9 @@ var FleetNode = class {
   async relayTunnel(bi) {
     try {
       const socket = await net.connect({ host: "127.0.0.1", port: this.config.dsh_port });
-      pump(socket, bi.send, bi.recv, false);
+      const { head, stream } = await peekRecvHead(bi.recv);
+      const upgrade = /\bupgrade:\s*websocket\b/i.test(head);
+      pump(socket, bi.send, stream, upgrade);
     } catch (error) {
       this.log("tunnel connect failed: " + errorMessage(error));
       try {
@@ -930,6 +934,32 @@ async function readLine(recv) {
       throw new Error("ctrl line too long");
   }
   return new TextDecoder().decode(Uint8Array.from(out));
+}
+async function peekRecvHead(recv) {
+  const out = [];
+  for (; ; ) {
+    const chunk = await recv.read(1);
+    if (chunk.length === 0)
+      break;
+    out.push(chunk[0]);
+    if (out.length > 65536)
+      break;
+    const n = out.length;
+    if (n >= 4 && out[n - 4] === 13 && out[n - 3] === 10 && out[n - 2] === 13 && out[n - 1] === 10)
+      break;
+  }
+  let pos = 0;
+  const stream = {
+    async read(sizeLimit) {
+      if (pos < out.length) {
+        const next = out.slice(pos, pos + sizeLimit);
+        pos += next.length;
+        return next;
+      }
+      return recv.read(sizeLimit);
+    }
+  };
+  return { head: Buffer.from(out).toString("latin1"), stream };
 }
 function pump(socket, send, recv, endOnEof = true) {
   socket.on("data", (chunk) => {
