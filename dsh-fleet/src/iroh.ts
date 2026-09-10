@@ -318,8 +318,8 @@ export class FleetNode {
         const alive = await this.bridgeRequest(socket, conn, peer, port, parsed, body, detach);
         if (!alive) return;
       }
-    } catch {
-      // fall through to cleanup
+    } catch (error) {
+      this.log("gateway " + peer.name + " conn error: " + errorMessage(error));
     }
     detach();
     socket.destroy();
@@ -354,11 +354,13 @@ export class FleetNode {
     let bi: { send: SendStream; recv: RecvStream };
     try {
       bi = await conn.openBi();
-    } catch {
+    } catch (error) {
+      this.log("gateway " + peer.name + " openBi: " + errorMessage(error));
       socket.destroy();
       detach();
       return false;
     }
+    this.log("gateway " + peer.name + " bridge " + parsed.method + " " + parsed.target);
     try {
       const lines = [parsed.method + " " + parsed.target + " HTTP/1.1"];
       for (const [key, value] of Object.entries(headers)) {
@@ -368,7 +370,8 @@ export class FleetNode {
       await bi.send.writeAll(Array.from(Buffer.from(lines.join("\r\n") + "\r\n\r\n", "latin1")));
       if (body.length > 0) await bi.send.writeAll(Array.from(body));
       await bi.send.finish().catch(() => {});
-    } catch {
+    } catch (error) {
+      this.log("gateway " + peer.name + " send: " + errorMessage(error));
       socket.destroy();
       detach();
       return false;
@@ -377,7 +380,8 @@ export class FleetNode {
     let respHead: Buffer;
     try {
       respHead = await readRecvHead(bi.recv);
-    } catch {
+    } catch (error) {
+      this.log("gateway " + peer.name + " resp head: " + errorMessage(error));
       detach();
       this.writeHttp(socket, 502, JSON.stringify({ error: "peer did not answer" }));
       return false;
