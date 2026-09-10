@@ -1,6 +1,6 @@
 export { ROUTES, makeRoutes } from "./routes.js";
-export { FleetNode, fleetHome, loadConfig, defaultConfig, saveConfig } from "./iroh.js";
-export type { FleetConfig } from "./iroh.js";
+export { FleetNode, fleetHome, loadConfig, defaultConfig, saveConfig, parseHead } from "./iroh.js";
+export type { FleetConfig, ParsedHead } from "./iroh.js";
 export declare const name = "dsh-fleet";
 export declare const inject: string[];
 interface FleetContext {

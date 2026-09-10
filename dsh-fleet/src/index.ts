@@ -6,11 +6,10 @@
  * the browser dropdown. Failure policy: warn, never break GUI startup.
  */
 import { FleetNode, loadConfig, type FleetConfig } from "./iroh.ts";
-import { makeRoutes } from "./routes.ts";
 
 export { ROUTES, makeRoutes } from "./routes.ts";
-export { FleetNode, fleetHome, loadConfig, defaultConfig, saveConfig } from "./iroh.ts";
-export type { FleetConfig } from "./iroh.ts";
+export { FleetNode, fleetHome, loadConfig, defaultConfig, saveConfig, parseHead } from "./iroh.ts";
+export type { FleetConfig, ParsedHead } from "./iroh.ts";
 
 export const name = "dsh-fleet";
 export const inject = ["webServer"];
@@ -69,10 +68,7 @@ export function apply(ctx: FleetContext): void {
       .then(() => {
         if (cancelled) { void fleet.stop(); return; }
         node = fleet;
-        const routes = makeRoutes({
-          node: () => fleet,
-          config,
-        });
+        const routes = fleet.routes;
         disposers = routes.map((route) => ctx.webServer.register(route));
         log("fleet node running; join via GET /api/dsh-fleet/invite");
       })

@@ -19,6 +19,8 @@ import { join } from "node:path";
 import net from "node:net";
 import { Endpoint, EndpointTicket, SecretKey } from "@number0/iroh";
 import type { Connection, RecvStream, SendStream } from "@number0/iroh";
+import { errorMessage } from "../shared/host-utils.js";
+import { makeRoutes } from "./routes.ts";
 
 const ALPN = Array.from(new TextEncoder().encode("dsh-fleet/1"));
 
@@ -83,12 +85,17 @@ export class FleetNode {
   private readonly dialing = new Map<string, Promise<void>>();
   private selfId = "";
   private stopped = false;
+  /** Local dispatcher for intercepted gateway requests — the browser runs
+   * on this machine, so its fleet API must be served here, not tunneled. */
+  readonly routes: ReturnType<typeof makeRoutes>;
 
   constructor(
     private readonly config: FleetConfig,
     private readonly log: (...a: unknown[]) => void,
     private readonly launchToken?: () => string | undefined,
-  ) {}
+  ) {
+    this.routes = makeRoutes({ node: () => this, config: this.config });
+  }
 
   /** Set once the connection service loads; undefined before that. */
   private homeUrl(): string | undefined {
@@ -234,14 +241,7 @@ export class FleetNode {
     if (peer.gatewayPort !== undefined && peer.gatewayServer !== undefined) return { port: peer.gatewayPort, token: peer.token };
     const port = await this.findFreePort();
     const conn = peer.conn;
-    const server = net.createServer((socket) => {
-      void (async () => {
-        try {
-          const bi = await conn.openBi();
-          pump(socket, bi.send, bi.recv);
-        } catch { socket.destroy(); }
-      })();
-    });
+    const server = net.createServer((socket) => { void this.gatewayConn(socket, conn); });
     await new Promise<void>((resolve, reject) => {
       // persistent handler: an unhandled 'error' event on a listening server
       // is an uncaught exception and takes the whole dsh web process down.
@@ -252,6 +252,138 @@ export class FleetNode {
     peer.gatewayServer = server;
     this.log("gateway " + peer.name + " on 127.0.0.1:" + String(port));
     return { port, token: peer.token };
+  }
+
+  /**
+   * One browser connection to a gateway port. Requests under /api/dsh-fleet/
+   * are served by THIS node — the browser runs on this machine, so a dial
+   * must allocate a gateway here, never on the peer at the tunnel's far end
+   * whose loopback the browser cannot reach. Everything else pipes raw into
+   * the tunnel request by request, so a keep-alive socket can mix asset
+   * loads and fleet polls.
+   */
+  private async gatewayConn(socket: net.Socket, conn: Connection): Promise<void> {
+    socket.on("error", () => { socket.destroy(); });
+    let bi: { send: SendStream; recv: RecvStream };
+    try {
+      bi = await conn.openBi();
+    } catch {
+      socket.destroy();
+      return;
+    }
+    // tunnel -> browser half (raw pipe)
+    void (async () => {
+      try {
+        for (;;) {
+          const chunk = await bi.recv.read(65536);
+          if (chunk.length === 0) break;
+          if (!socket.write(Buffer.from(chunk))) {
+            await new Promise<void>((r) => { socket.once("drain", () => { r(); }); });
+          }
+        }
+        socket.end();
+      } catch { socket.destroy(); }
+    })();
+
+    let pending = Buffer.alloc(0);
+    let mode: "head" | "body" | "raw" = "head";
+    let bodyLeft = 0;
+    let intercepting = false;
+    const forward = (buf: Buffer): void => {
+      void bi.send.writeAll(Array.from(buf)).catch(() => { socket.destroy(); });
+    };
+    socket.on("data", (chunk: Buffer): void => {
+      if (intercepting) return;
+      pending = Buffer.concat([pending, chunk]);
+      for (;;) {
+        if (mode === "raw") { forward(pending); pending = Buffer.alloc(0); return; }
+        if (mode === "body") {
+          if (pending.length === 0) return;
+          const take = Math.min(pending.length, bodyLeft);
+          forward(pending.subarray(0, take));
+          pending = pending.subarray(take);
+          bodyLeft -= take;
+          if (bodyLeft > 0) return;
+          mode = "head";
+          continue;
+        }
+        const i = pending.indexOf("\r\n\r\n");
+        if (i < 0) { if (pending.length > 65536) socket.destroy(); return; }
+        const parsed = parseHead(pending.subarray(0, i + 4));
+        if (parsed === null) { socket.destroy(); return; }
+        if (parsed.path.startsWith("/api/dsh-fleet/")) {
+          intercepting = true;
+          const pre = pending.subarray(i + 4);
+          pending = Buffer.alloc(0);
+          void bi.send.finish().catch(() => {});
+          void this.serveFleetApi(socket, parsed, pre);
+          return;
+        }
+        forward(pending.subarray(0, i + 4));
+        pending = pending.subarray(i + 4);
+        const cl = Number.parseInt(parsed.headers["content-length"] ?? "", 10);
+        if (Number.isFinite(cl) && cl > 0) { bodyLeft = cl; mode = "body"; continue; }
+        if ((parsed.headers["transfer-encoding"] ?? "").toLowerCase().includes("chunked")) {
+          // ponytail: chunked uploads stop per-request parsing (socket goes
+          // raw); later fleet polls on it miss the intercept and ride the
+          // tunnel — browsers usually upload with content-length
+          mode = "raw";
+          continue;
+        }
+        continue;
+      }
+    });
+    socket.on("end", () => { void bi.send.finish().catch(() => {}); });
+  }
+
+  /** Serve one intercepted fleet request locally; close the socket after. */
+  private async serveFleetApi(socket: net.Socket, parsed: ParsedHead, pre: Buffer): Promise<void> {
+    const route = this.routes.find((r) => r.kind === "exact" && r.path === parsed.path);
+    if (route === undefined) {
+      this.writeHttp(socket, 404, JSON.stringify({ error: "no such fleet route" }));
+      return;
+    }
+    const want = Number.parseInt(parsed.headers["content-length"] ?? "", 10);
+    let body = pre;
+    if (Number.isFinite(want) && want > 0) {
+      try {
+        while (body.length < want) body = Buffer.concat([body, await nextChunk(socket)]);
+        if (body.length > want) body = body.subarray(0, want);
+      } catch {
+        socket.destroy();
+        return;
+      }
+    }
+    const state = { status: 0, headers: {} as Record<string, string>, body: "" };
+    const req = {
+      method: parsed.method,
+      url: parsed.path,
+      headers: parsed.headers,
+      socket: { remoteAddress: "127.0.0.1" },
+      [Symbol.asyncIterator]: async function* () { if (body.length > 0) yield body; },
+    };
+    const res = {
+      writeHead(code: number, headers?: Record<string, string>) {
+        state.status = code;
+        if (headers !== undefined) Object.assign(state.headers, headers);
+      },
+      end(text?: string) { if (text !== undefined) state.body += String(text); },
+    };
+    try {
+      await (route.handler as unknown as (r: unknown, s: unknown) => void | Promise<void>)(req, res);
+    } catch (error) {
+      state.status = 500;
+      state.body = JSON.stringify({ error: errorMessage(error) });
+    }
+    this.writeHttp(socket, state.status === 0 ? 500 : state.status, state.body, state.headers);
+  }
+
+  private writeHttp(socket: net.Socket, status: number, body: string, headers: Record<string, string> = {}): void {
+    const reason = ({ 200: "OK", 400: "Bad Request", 403: "Forbidden", 404: "Not Found", 500: "Internal Server Error", 503: "Service Unavailable" } as Record<number, string>)[status] ?? "Status";
+    const extra = Object.entries(headers).map(([k, v]) => k + ": " + v).join("\r\n");
+    const out = Buffer.from(body, "utf8");
+    const headText = "HTTP/1.1 " + String(status) + " " + reason + "\r\n" + (extra === "" ? "" : extra + "\r\n") + "content-length: " + String(out.length) + "\r\nconnection: close\r\n\r\n";
+    socket.end(Buffer.concat([Buffer.from(headText, "latin1"), out]));
   }
 
   private async findFreePort(): Promise<number> {
@@ -487,4 +619,37 @@ function pump(socket: net.Socket, send: SendStream, recv: RecvStream): void {
       socket.end();
     } catch { socket.destroy(); }
   })();
+}
+
+/** One chunk of a socket stream (after the head consumer released it). */
+function nextChunk(socket: net.Socket): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const onData = (chunk: Buffer) => { socket.off("end", onEnd); socket.off("error", onErr); resolve(chunk); };
+    const onEnd = () => { socket.off("data", onData); socket.off("error", onErr); reject(new Error("gateway closed mid-body")); };
+    const onErr = () => { socket.off("data", onData); socket.off("end", onEnd); reject(new Error("gateway socket error")); };
+    socket.once("data", onData);
+    socket.once("end", onEnd);
+    socket.once("error", onErr);
+  });
+}
+
+export interface ParsedHead {
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+}
+
+/** Request line + headers of one HTTP request head (bytes up to \r\n\r\n). */
+export function parseHead(head: Buffer): ParsedHead | null {
+  const lines = head.toString("latin1").split("\r\n");
+  const parts = (lines[0] ?? "").split(" ");
+  if (parts.length < 2) return null;
+  const headers: Record<string, string> = {};
+  for (const line of lines.slice(1)) {
+    const i = line.indexOf(":");
+    if (i > 0) headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
+  }
+  let path = parts[1];
+  try { path = new URL(parts[1], "http://localhost").pathname; } catch { /* keep raw */ }
+  return { method: parts[0], path, headers };
 }

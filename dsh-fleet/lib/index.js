@@ -5,6 +5,207 @@ import { hostname } from "node:os";
 import { join } from "node:path";
 import net from "node:net";
 import { Endpoint, EndpointTicket, SecretKey } from "@number0/iroh";
+
+// shared/host-utils.js
+import { Buffer as Buffer2 } from "node:buffer";
+function writeJson(res, status, payload) {
+  res.writeHead(status, {
+    "content-type": "application/json; charset=utf-8",
+    "referrer-policy": "no-referrer"
+  });
+  res.end(JSON.stringify(payload));
+}
+async function readJsonBody(req, limit = 2 * 1024 * 1024) {
+  try {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of req) {
+      size += chunk.length;
+      if (size > limit) return void 0;
+      chunks.push(chunk);
+    }
+    const parsed = JSON.parse(Buffer2.concat(chunks).toString("utf8"));
+    return typeof parsed === "object" && parsed !== null ? parsed : void 0;
+  } catch {
+    return void 0;
+  }
+}
+function errorMessage(error) {
+  try {
+    if (error instanceof Error) return error.message;
+    return String(error);
+  } catch {
+    return "[unrenderable thrown value]";
+  }
+}
+
+// shared/loopback.js
+function isLoopbackRequest(request) {
+  const address = request.socket?.remoteAddress;
+  if (address !== "127.0.0.1" && address !== "::1" && address !== "::ffff:127.0.0.1") return false;
+  const host = request.headers.host;
+  if (typeof host !== "string") return false;
+  let hostUrl;
+  try {
+    hostUrl = new URL(`http://${host}`);
+  } catch {
+    return false;
+  }
+  if (hostUrl.hostname !== "127.0.0.1" && hostUrl.hostname !== "localhost" && hostUrl.hostname !== "[::1]") return false;
+  if (request.headers["sec-fetch-site"] === "cross-site") return false;
+  const origin = request.headers.origin;
+  if (origin === void 0) return true;
+  try {
+    return new URL(origin).host === hostUrl.host;
+  } catch {
+    return false;
+  }
+}
+
+// lib/routes.js
+var ROUTES = {
+  status: "/api/dsh-fleet/status",
+  invite: "/api/dsh-fleet/invite",
+  pairing: "/api/dsh-fleet/pairing",
+  pair: "/api/dsh-fleet/pair",
+  remove: "/api/dsh-fleet/remove",
+  dial: "/api/dsh-fleet/dial",
+  peers: "/api/dsh-fleet/peers"
+};
+function makeRoutes(deps) {
+  const guard = (req, res) => {
+    if (isLoopbackRequest(req))
+      return true;
+    writeJson(res, 403, { error: "forbidden: loopback-only" });
+    return false;
+  };
+  return [
+    {
+      kind: "exact",
+      path: ROUTES.status,
+      handler: async (req, res) => {
+        if (req.method !== "GET" || !guard(req, res))
+          return;
+        try {
+          writeJson(res, 200, deps.node().status());
+        } catch (error) {
+          writeJson(res, 503, { error: errorMessage(error) });
+        }
+      }
+    },
+    {
+      kind: "exact",
+      path: ROUTES.invite,
+      handler: async (req, res) => {
+        if (req.method !== "GET" || !guard(req, res))
+          return;
+        try {
+          writeJson(res, 200, {
+            ticket: deps.node().invite(),
+            fleet: deps.config.fleet,
+            name: deps.config.name
+          });
+        } catch (error) {
+          writeJson(res, 503, { error: errorMessage(error) });
+        }
+      }
+    },
+    {
+      kind: "exact",
+      path: ROUTES.pairing,
+      handler: async (req, res) => {
+        if (req.method !== "GET" || !guard(req, res))
+          return;
+        try {
+          writeJson(res, 200, { code: deps.node().pairingCode(), fleet: deps.config.fleet, name: deps.config.name });
+        } catch (error) {
+          writeJson(res, 503, { error: errorMessage(error) });
+        }
+      }
+    },
+    {
+      kind: "exact",
+      path: ROUTES.pair,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res))
+          return;
+        const body = await readJsonBody(req);
+        const code = typeof body?.code === "string" ? body.code : void 0;
+        if (code === void 0 || code.trim() === "") {
+          writeJson(res, 400, { error: "missing code" });
+          return;
+        }
+        try {
+          await deps.node().pair(code);
+          writeJson(res, 200, { ok: true });
+        } catch (error) {
+          writeJson(res, 400, { error: errorMessage(error) });
+        }
+      }
+    },
+    {
+      kind: "exact",
+      path: ROUTES.remove,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res))
+          return;
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === "string" ? body.id : void 0;
+        if (id === void 0 || id === "") {
+          writeJson(res, 400, { error: "missing id" });
+          return;
+        }
+        try {
+          deps.node().removePeer(id);
+          writeJson(res, 200, { ok: true });
+        } catch (error) {
+          writeJson(res, 400, { error: errorMessage(error) });
+        }
+      }
+    },
+    {
+      kind: "exact",
+      path: ROUTES.dial,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res))
+          return;
+        const body = await readJsonBody(req);
+        const id = typeof body?.id === "string" ? body.id : void 0;
+        if (id === void 0) {
+          writeJson(res, 400, { error: "missing id" });
+          return;
+        }
+        try {
+          writeJson(res, 200, await deps.node().dial(id));
+        } catch (error) {
+          writeJson(res, 503, { error: errorMessage(error) });
+        }
+      }
+    },
+    {
+      kind: "exact",
+      path: ROUTES.peers,
+      handler: async (req, res) => {
+        if (req.method !== "POST" || !guard(req, res))
+          return;
+        const body = await readJsonBody(req);
+        const ticket = typeof body?.ticket === "string" ? body.ticket : void 0;
+        if (ticket === void 0 || ticket.trim() === "") {
+          writeJson(res, 400, { error: "missing ticket" });
+          return;
+        }
+        try {
+          await deps.node().addPeer(ticket);
+          writeJson(res, 200, { ok: true });
+        } catch (error) {
+          writeJson(res, 400, { error: errorMessage(error) });
+        }
+      }
+    }
+  ];
+}
+
+// lib/iroh.js
 var ALPN = Array.from(new TextEncoder().encode("dsh-fleet/1"));
 function fleetHome() {
   return process.env.DSH_HOME !== void 0 && process.env.DSH_HOME !== "" ? join(process.env.DSH_HOME, "dsh-fleet") : join(process.env.HOME ?? ".", ".dsh", "dsh-fleet");
@@ -42,10 +243,14 @@ var FleetNode = class {
   dialing = /* @__PURE__ */ new Map();
   selfId = "";
   stopped = false;
+  /** Local dispatcher for intercepted gateway requests — the browser runs
+   * on this machine, so its fleet API must be served here, not tunneled. */
+  routes;
   constructor(config, log, launchToken) {
     this.config = config;
     this.log = log;
     this.launchToken = launchToken;
+    this.routes = makeRoutes({ node: () => this, config: this.config });
   }
   /** Set once the connection service loads; undefined before that. */
   homeUrl() {
@@ -204,14 +409,7 @@ var FleetNode = class {
     const port = await this.findFreePort();
     const conn = peer.conn;
     const server = net.createServer((socket) => {
-      void (async () => {
-        try {
-          const bi = await conn.openBi();
-          pump(socket, bi.send, bi.recv);
-        } catch {
-          socket.destroy();
-        }
-      })();
+      void this.gatewayConn(socket, conn);
     });
     await new Promise((resolve, reject) => {
       server.on("error", (err) => {
@@ -225,6 +423,172 @@ var FleetNode = class {
     peer.gatewayServer = server;
     this.log("gateway " + peer.name + " on 127.0.0.1:" + String(port));
     return { port, token: peer.token };
+  }
+  /**
+   * One browser connection to a gateway port. Requests under /api/dsh-fleet/
+   * are served by THIS node — the browser runs on this machine, so a dial
+   * must allocate a gateway here, never on the peer at the tunnel's far end
+   * whose loopback the browser cannot reach. Everything else pipes raw into
+   * the tunnel request by request, so a keep-alive socket can mix asset
+   * loads and fleet polls.
+   */
+  async gatewayConn(socket, conn) {
+    socket.on("error", () => {
+      socket.destroy();
+    });
+    let bi;
+    try {
+      bi = await conn.openBi();
+    } catch {
+      socket.destroy();
+      return;
+    }
+    void (async () => {
+      try {
+        for (; ; ) {
+          const chunk = await bi.recv.read(65536);
+          if (chunk.length === 0)
+            break;
+          if (!socket.write(Buffer.from(chunk))) {
+            await new Promise((r) => {
+              socket.once("drain", () => {
+                r();
+              });
+            });
+          }
+        }
+        socket.end();
+      } catch {
+        socket.destroy();
+      }
+    })();
+    let pending = Buffer.alloc(0);
+    let mode = "head";
+    let bodyLeft = 0;
+    let intercepting = false;
+    const forward = (buf) => {
+      void bi.send.writeAll(Array.from(buf)).catch(() => {
+        socket.destroy();
+      });
+    };
+    socket.on("data", (chunk) => {
+      if (intercepting)
+        return;
+      pending = Buffer.concat([pending, chunk]);
+      for (; ; ) {
+        if (mode === "raw") {
+          forward(pending);
+          pending = Buffer.alloc(0);
+          return;
+        }
+        if (mode === "body") {
+          if (pending.length === 0)
+            return;
+          const take = Math.min(pending.length, bodyLeft);
+          forward(pending.subarray(0, take));
+          pending = pending.subarray(take);
+          bodyLeft -= take;
+          if (bodyLeft > 0)
+            return;
+          mode = "head";
+          continue;
+        }
+        const i = pending.indexOf("\r\n\r\n");
+        if (i < 0) {
+          if (pending.length > 65536)
+            socket.destroy();
+          return;
+        }
+        const parsed = parseHead(pending.subarray(0, i + 4));
+        if (parsed === null) {
+          socket.destroy();
+          return;
+        }
+        if (parsed.path.startsWith("/api/dsh-fleet/")) {
+          intercepting = true;
+          const pre = pending.subarray(i + 4);
+          pending = Buffer.alloc(0);
+          void bi.send.finish().catch(() => {
+          });
+          void this.serveFleetApi(socket, parsed, pre);
+          return;
+        }
+        forward(pending.subarray(0, i + 4));
+        pending = pending.subarray(i + 4);
+        const cl = Number.parseInt(parsed.headers["content-length"] ?? "", 10);
+        if (Number.isFinite(cl) && cl > 0) {
+          bodyLeft = cl;
+          mode = "body";
+          continue;
+        }
+        if ((parsed.headers["transfer-encoding"] ?? "").toLowerCase().includes("chunked")) {
+          mode = "raw";
+          continue;
+        }
+        continue;
+      }
+    });
+    socket.on("end", () => {
+      void bi.send.finish().catch(() => {
+      });
+    });
+  }
+  /** Serve one intercepted fleet request locally; close the socket after. */
+  async serveFleetApi(socket, parsed, pre) {
+    const route = this.routes.find((r) => r.kind === "exact" && r.path === parsed.path);
+    if (route === void 0) {
+      this.writeHttp(socket, 404, JSON.stringify({ error: "no such fleet route" }));
+      return;
+    }
+    const want = Number.parseInt(parsed.headers["content-length"] ?? "", 10);
+    let body = pre;
+    if (Number.isFinite(want) && want > 0) {
+      try {
+        while (body.length < want)
+          body = Buffer.concat([body, await nextChunk(socket)]);
+        if (body.length > want)
+          body = body.subarray(0, want);
+      } catch {
+        socket.destroy();
+        return;
+      }
+    }
+    const state = { status: 0, headers: {}, body: "" };
+    const req = {
+      method: parsed.method,
+      url: parsed.path,
+      headers: parsed.headers,
+      socket: { remoteAddress: "127.0.0.1" },
+      [Symbol.asyncIterator]: async function* () {
+        if (body.length > 0)
+          yield body;
+      }
+    };
+    const res = {
+      writeHead(code, headers) {
+        state.status = code;
+        if (headers !== void 0)
+          Object.assign(state.headers, headers);
+      },
+      end(text) {
+        if (text !== void 0)
+          state.body += String(text);
+      }
+    };
+    try {
+      await route.handler(req, res);
+    } catch (error) {
+      state.status = 500;
+      state.body = JSON.stringify({ error: errorMessage(error) });
+    }
+    this.writeHttp(socket, state.status === 0 ? 500 : state.status, state.body, state.headers);
+  }
+  writeHttp(socket, status, body, headers = {}) {
+    const reason = { 200: "OK", 400: "Bad Request", 403: "Forbidden", 404: "Not Found", 500: "Internal Server Error", 503: "Service Unavailable" }[status] ?? "Status";
+    const extra = Object.entries(headers).map(([k, v]) => k + ": " + v).join("\r\n");
+    const out = Buffer.from(body, "utf8");
+    const headText = "HTTP/1.1 " + String(status) + " " + reason + "\r\n" + (extra === "" ? "" : extra + "\r\n") + "content-length: " + String(out.length) + "\r\nconnection: close\r\n\r\n";
+    socket.end(Buffer.concat([Buffer.from(headText, "latin1"), out]));
   }
   async findFreePort() {
     for (let port = this.config.gateway_base; port < this.config.gateway_base + 100; port++) {
@@ -491,204 +855,45 @@ function pump(socket, send, recv) {
     }
   })();
 }
-
-// shared/loopback.js
-function isLoopbackRequest(request) {
-  const address = request.socket?.remoteAddress;
-  if (address !== "127.0.0.1" && address !== "::1" && address !== "::ffff:127.0.0.1") return false;
-  const host = request.headers.host;
-  if (typeof host !== "string") return false;
-  let hostUrl;
-  try {
-    hostUrl = new URL(`http://${host}`);
-  } catch {
-    return false;
-  }
-  if (hostUrl.hostname !== "127.0.0.1" && hostUrl.hostname !== "localhost" && hostUrl.hostname !== "[::1]") return false;
-  if (request.headers["sec-fetch-site"] === "cross-site") return false;
-  const origin = request.headers.origin;
-  if (origin === void 0) return true;
-  try {
-    return new URL(origin).host === hostUrl.host;
-  } catch {
-    return false;
-  }
-}
-
-// shared/host-utils.js
-import { Buffer as Buffer2 } from "node:buffer";
-function writeJson(res, status, payload) {
-  res.writeHead(status, {
-    "content-type": "application/json; charset=utf-8",
-    "referrer-policy": "no-referrer"
+function nextChunk(socket) {
+  return new Promise((resolve, reject) => {
+    const onData = (chunk) => {
+      socket.off("end", onEnd);
+      socket.off("error", onErr);
+      resolve(chunk);
+    };
+    const onEnd = () => {
+      socket.off("data", onData);
+      socket.off("error", onErr);
+      reject(new Error("gateway closed mid-body"));
+    };
+    const onErr = () => {
+      socket.off("data", onData);
+      socket.off("end", onEnd);
+      reject(new Error("gateway socket error"));
+    };
+    socket.once("data", onData);
+    socket.once("end", onEnd);
+    socket.once("error", onErr);
   });
-  res.end(JSON.stringify(payload));
 }
-async function readJsonBody(req, limit = 2 * 1024 * 1024) {
-  try {
-    const chunks = [];
-    let size = 0;
-    for await (const chunk of req) {
-      size += chunk.length;
-      if (size > limit) return void 0;
-      chunks.push(chunk);
-    }
-    const parsed = JSON.parse(Buffer2.concat(chunks).toString("utf8"));
-    return typeof parsed === "object" && parsed !== null ? parsed : void 0;
-  } catch {
-    return void 0;
+function parseHead(head) {
+  const lines = head.toString("latin1").split("\r\n");
+  const parts = (lines[0] ?? "").split(" ");
+  if (parts.length < 2)
+    return null;
+  const headers = {};
+  for (const line of lines.slice(1)) {
+    const i = line.indexOf(":");
+    if (i > 0)
+      headers[line.slice(0, i).trim().toLowerCase()] = line.slice(i + 1).trim();
   }
-}
-function errorMessage(error) {
+  let path = parts[1];
   try {
-    if (error instanceof Error) return error.message;
-    return String(error);
+    path = new URL(parts[1], "http://localhost").pathname;
   } catch {
-    return "[unrenderable thrown value]";
   }
-}
-
-// lib/routes.js
-var ROUTES = {
-  status: "/api/dsh-fleet/status",
-  invite: "/api/dsh-fleet/invite",
-  pairing: "/api/dsh-fleet/pairing",
-  pair: "/api/dsh-fleet/pair",
-  remove: "/api/dsh-fleet/remove",
-  dial: "/api/dsh-fleet/dial",
-  peers: "/api/dsh-fleet/peers"
-};
-function makeRoutes(deps) {
-  const guard = (req, res) => {
-    if (isLoopbackRequest(req))
-      return true;
-    writeJson(res, 403, { error: "forbidden: loopback-only" });
-    return false;
-  };
-  return [
-    {
-      kind: "exact",
-      path: ROUTES.status,
-      handler: async (req, res) => {
-        if (req.method !== "GET" || !guard(req, res))
-          return;
-        try {
-          writeJson(res, 200, deps.node().status());
-        } catch (error) {
-          writeJson(res, 503, { error: errorMessage(error) });
-        }
-      }
-    },
-    {
-      kind: "exact",
-      path: ROUTES.invite,
-      handler: async (req, res) => {
-        if (req.method !== "GET" || !guard(req, res))
-          return;
-        try {
-          writeJson(res, 200, {
-            ticket: deps.node().invite(),
-            fleet: deps.config.fleet,
-            name: deps.config.name
-          });
-        } catch (error) {
-          writeJson(res, 503, { error: errorMessage(error) });
-        }
-      }
-    },
-    {
-      kind: "exact",
-      path: ROUTES.pairing,
-      handler: async (req, res) => {
-        if (req.method !== "GET" || !guard(req, res))
-          return;
-        try {
-          writeJson(res, 200, { code: deps.node().pairingCode(), fleet: deps.config.fleet, name: deps.config.name });
-        } catch (error) {
-          writeJson(res, 503, { error: errorMessage(error) });
-        }
-      }
-    },
-    {
-      kind: "exact",
-      path: ROUTES.pair,
-      handler: async (req, res) => {
-        if (req.method !== "POST" || !guard(req, res))
-          return;
-        const body = await readJsonBody(req);
-        const code = typeof body?.code === "string" ? body.code : void 0;
-        if (code === void 0 || code.trim() === "") {
-          writeJson(res, 400, { error: "missing code" });
-          return;
-        }
-        try {
-          await deps.node().pair(code);
-          writeJson(res, 200, { ok: true });
-        } catch (error) {
-          writeJson(res, 400, { error: errorMessage(error) });
-        }
-      }
-    },
-    {
-      kind: "exact",
-      path: ROUTES.remove,
-      handler: async (req, res) => {
-        if (req.method !== "POST" || !guard(req, res))
-          return;
-        const body = await readJsonBody(req);
-        const id = typeof body?.id === "string" ? body.id : void 0;
-        if (id === void 0 || id === "") {
-          writeJson(res, 400, { error: "missing id" });
-          return;
-        }
-        try {
-          deps.node().removePeer(id);
-          writeJson(res, 200, { ok: true });
-        } catch (error) {
-          writeJson(res, 400, { error: errorMessage(error) });
-        }
-      }
-    },
-    {
-      kind: "exact",
-      path: ROUTES.dial,
-      handler: async (req, res) => {
-        if (req.method !== "POST" || !guard(req, res))
-          return;
-        const body = await readJsonBody(req);
-        const id = typeof body?.id === "string" ? body.id : void 0;
-        if (id === void 0) {
-          writeJson(res, 400, { error: "missing id" });
-          return;
-        }
-        try {
-          writeJson(res, 200, await deps.node().dial(id));
-        } catch (error) {
-          writeJson(res, 503, { error: errorMessage(error) });
-        }
-      }
-    },
-    {
-      kind: "exact",
-      path: ROUTES.peers,
-      handler: async (req, res) => {
-        if (req.method !== "POST" || !guard(req, res))
-          return;
-        const body = await readJsonBody(req);
-        const ticket = typeof body?.ticket === "string" ? body.ticket : void 0;
-        if (ticket === void 0 || ticket.trim() === "") {
-          writeJson(res, 400, { error: "missing ticket" });
-          return;
-        }
-        try {
-          await deps.node().addPeer(ticket);
-          writeJson(res, 200, { ok: true });
-        } catch (error) {
-          writeJson(res, 400, { error: errorMessage(error) });
-        }
-      }
-    }
-  ];
+  return { method: parts[0], path, headers };
 }
 
 // lib/index.js
@@ -740,10 +945,7 @@ function apply(ctx) {
         return;
       }
       node = fleet;
-      const routes = makeRoutes({
-        node: () => fleet,
-        config
-      });
+      const routes = fleet.routes;
       disposers = routes.map((route) => ctx.webServer.register(route));
       log("fleet node running; join via GET /api/dsh-fleet/invite");
     }).catch((error) => {
@@ -767,5 +969,6 @@ export {
   loadConfig,
   makeRoutes,
   name,
+  parseHead,
   saveConfig
 };

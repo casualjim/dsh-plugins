@@ -1,3 +1,4 @@
+import { makeRoutes } from "./routes.js";
 export interface FleetConfig {
     fleet: string;
     secret: string;
@@ -19,6 +20,9 @@ export declare class FleetNode {
     private readonly dialing;
     private selfId;
     private stopped;
+    /** Local dispatcher for intercepted gateway requests — the browser runs
+     * on this machine, so its fleet API must be served here, not tunneled. */
+    readonly routes: ReturnType<typeof makeRoutes>;
     constructor(config: FleetConfig, log: (...a: unknown[]) => void, launchToken?: (() => string | undefined) | undefined);
     /** Set once the connection service loads; undefined before that. */
     private homeUrl;
@@ -44,6 +48,18 @@ export declare class FleetNode {
         port: number;
         token?: string;
     }>;
+    /**
+     * One browser connection to a gateway port. Requests under /api/dsh-fleet/
+     * are served by THIS node — the browser runs on this machine, so a dial
+     * must allocate a gateway here, never on the peer at the tunnel's far end
+     * whose loopback the browser cannot reach. Everything else pipes raw into
+     * the tunnel request by request, so a keep-alive socket can mix asset
+     * loads and fleet polls.
+     */
+    private gatewayConn;
+    /** Serve one intercepted fleet request locally; close the socket after. */
+    private serveFleetApi;
+    private writeHttp;
     private findFreePort;
     /**
      * Event-driven liveness: resolves when the connection closes; clears state
@@ -65,3 +81,10 @@ export declare class FleetNode {
     private ctrlLoop;
     private tunnelAcceptLoop;
 }
+export interface ParsedHead {
+    method: string;
+    path: string;
+    headers: Record<string, string>;
+}
+/** Request line + headers of one HTTP request head (bytes up to \r\n\r\n). */
+export declare function parseHead(head: Buffer): ParsedHead | null;
