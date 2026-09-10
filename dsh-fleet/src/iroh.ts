@@ -692,7 +692,13 @@ export class FleetNode {
   private async relayTunnel(bi: { send: SendStream; recv: RecvStream }): Promise<void> {
     try {
       const socket = await net.connect({ host: "127.0.0.1", port: this.config.dsh_port });
-      pump(socket, bi.send, bi.recv);
+      // The gateway FINs its send side right after the request head. Ending
+      // this socket in lockstep FINs the harness mid-request, and the
+      // harness answers an early-FIN authenticated request with a silent
+      // close ("peer did not answer"). Every bridged request carries
+      // connection: close, so the harness closes the socket itself after
+      // responding — nothing here needs to end it.
+      pump(socket, bi.send, bi.recv, false);
     } catch (error) {
       this.log("tunnel connect failed: " + errorMessage(error));
       try { await bi.send.reset(1n); } catch { /* already dead */ }
@@ -720,7 +726,7 @@ async function readLine(recv: RecvStream): Promise<string> {
   return new TextDecoder().decode(Uint8Array.from(out));
 }
 
-function pump(socket: net.Socket, send: SendStream, recv: RecvStream): void {
+function pump(socket: net.Socket, send: SendStream, recv: RecvStream, endOnEof = true): void {
   socket.on("data", (chunk: Buffer) => {
     void send.writeAll(Array.from(chunk)).catch(() => { socket.destroy(); });
   });
@@ -735,7 +741,7 @@ function pump(socket: net.Socket, send: SendStream, recv: RecvStream): void {
           await new Promise<void>((r) => { socket.once("drain", () => { r(); }); });
         }
       }
-      socket.end();
+      if (endOnEof) socket.end();
     } catch { socket.destroy(); }
   })();
 }

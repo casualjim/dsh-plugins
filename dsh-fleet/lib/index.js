@@ -902,7 +902,7 @@ var FleetNode = class {
   async relayTunnel(bi) {
     try {
       const socket = await net.connect({ host: "127.0.0.1", port: this.config.dsh_port });
-      pump(socket, bi.send, bi.recv);
+      pump(socket, bi.send, bi.recv, false);
     } catch (error) {
       this.log("tunnel connect failed: " + errorMessage(error));
       try {
@@ -931,7 +931,7 @@ async function readLine(recv) {
   }
   return new TextDecoder().decode(Uint8Array.from(out));
 }
-function pump(socket, send, recv) {
+function pump(socket, send, recv, endOnEof = true) {
   socket.on("data", (chunk) => {
     void send.writeAll(Array.from(chunk)).catch(() => {
       socket.destroy();
@@ -958,7 +958,8 @@ function pump(socket, send, recv) {
           });
         }
       }
-      socket.end();
+      if (endOnEof)
+        socket.end();
     } catch {
       socket.destroy();
     }
