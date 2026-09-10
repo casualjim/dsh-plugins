@@ -96,7 +96,8 @@ assert.ok(raw.includes("7911"));
       };
     },
   };
-  const gwServer = net.createServer((sock) => { void gwNode.gatewayConn(sock, fakeConn, gwNode.peers.get("known"), 7911); });
+  gwNode.peers.get("known").conn = fakeConn;
+  const gwServer = net.createServer((sock) => { void gwNode.gatewayConn(sock, gwNode.peers.get("known"), 7911); });
   await new Promise((r) => gwServer.listen(0, "127.0.0.1", r));
   const gwPort = gwServer.address().port;
   const waitFor = async (pred, ms = 3000) => {

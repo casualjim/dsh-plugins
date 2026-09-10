@@ -89,6 +89,10 @@ export declare class FleetNode {
     private upsertPeer;
     private ctrlLoop;
     private tunnelAcceptLoop;
+    /** One tunnel stream -> this machine's web UI. Never takes the accept
+     * loop down: a single failed connect used to kill the loop for good,
+     * leaving every later dial timing out on a still-"online" conn. */
+    private relayTunnel;
 }
 export interface ParsedHead {
     method: string;

@@ -407,9 +407,8 @@ var FleetNode = class {
     if (peer.gatewayPort !== void 0 && peer.gatewayServer !== void 0)
       return { port: peer.gatewayPort, token: peer.token };
     const port = await this.findFreePort();
-    const conn = peer.conn;
     const server = net.createServer((socket) => {
-      void this.gatewayConn(socket, conn, peer, port);
+      void this.gatewayConn(socket, peer, port);
     });
     await new Promise((resolve, reject) => {
       server.on("error", (err) => {
@@ -435,7 +434,7 @@ var FleetNode = class {
    * token handoff, Location headers point back at the gateway, and websocket
    * upgrades are relayed raw.
    */
-  async gatewayConn(socket, conn, peer, port) {
+  async gatewayConn(socket, peer, port) {
     socket.setTimeout(0);
     socket.setNoDelay(true);
     socket.setKeepAlive(true, 25e3);
@@ -518,7 +517,7 @@ var FleetNode = class {
           await this.serveFleetApi(socket, parsed, body);
           return;
         }
-        const alive = await this.bridgeRequest(socket, conn, peer, port, parsed, body, detach);
+        const alive = await this.bridgeRequest(socket, peer, port, parsed, body, detach);
         if (!alive)
           return;
       }
@@ -535,7 +534,7 @@ var FleetNode = class {
    * stream. Returns false when the socket must not serve more requests
    * (connection handed to a raw relay, or the tunnel failed).
    */
-  async bridgeRequest(socket, conn, peer, port, parsed, body, detach) {
+  async bridgeRequest(socket, peer, port, parsed, body, detach) {
     const authority = "127.0.0.1:" + String(peer.dshPort);
     const headers = rewritten(parsed.headers, authority);
     if ((headers["transfer-encoding"] ?? "").toLowerCase().includes("chunked")) {
@@ -545,11 +544,21 @@ var FleetNode = class {
     }
     delete headers["connection"];
     headers["connection"] = "close";
+    const conn = peer.conn;
+    if (conn === void 0) {
+      detach();
+      this.writeHttp(socket, 502, JSON.stringify({ error: "peer offline" }));
+      return false;
+    }
     let bi;
     try {
       bi = await conn.openBi();
     } catch (error) {
       this.log("gateway " + peer.name + " openBi: " + errorMessage(error));
+      try {
+        void conn.close(1n, []);
+      } catch {
+      }
       detach();
       this.writeHttp(socket, 502, JSON.stringify({ error: "openBi: " + errorMessage(error) }));
       return false;
@@ -877,13 +886,29 @@ var FleetNode = class {
     }
   }
   async tunnelAcceptLoop(_id, conn) {
-    try {
-      for (; ; ) {
-        const bi = await conn.acceptBi();
-        const socket = await net.connect({ host: "127.0.0.1", port: this.config.dsh_port });
-        pump(socket, bi.send, bi.recv);
+    for (; ; ) {
+      let bi;
+      try {
+        bi = await conn.acceptBi();
+      } catch {
+        return;
       }
-    } catch {
+      void this.relayTunnel(bi);
+    }
+  }
+  /** One tunnel stream -> this machine's web UI. Never takes the accept
+   * loop down: a single failed connect used to kill the loop for good,
+   * leaving every later dial timing out on a still-"online" conn. */
+  async relayTunnel(bi) {
+    try {
+      const socket = await net.connect({ host: "127.0.0.1", port: this.config.dsh_port });
+      pump(socket, bi.send, bi.recv);
+    } catch (error) {
+      this.log("tunnel connect failed: " + errorMessage(error));
+      try {
+        await bi.send.reset(1n);
+      } catch {
+      }
     }
   }
 };
