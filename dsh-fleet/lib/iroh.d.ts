@@ -52,11 +52,20 @@ export declare class FleetNode {
      * One browser connection to a gateway port. Requests under /api/dsh-fleet/
      * are served by THIS node — the browser runs on this machine, so a dial
      * must allocate a gateway here, never on the peer at the tunnel's far end
-     * whose loopback the browser cannot reach. Everything else pipes raw into
-     * the tunnel request by request, so a keep-alive socket can mix asset
-     * loads and fleet polls.
+     * whose loopback the browser cannot reach. Everything else is proxied to
+     * the peer's web UI the way a reverse proxy would: Host/Origin/Referer are
+     * rewritten to the peer's listening address (the harness only accepts
+     * requests whose Origin matches where it listens), a 401 on GET / mints a
+     * token handoff, Location headers point back at the gateway, and websocket
+     * upgrades are relayed raw.
      */
     private gatewayConn;
+    /**
+     * Proxy one non-fleet request to the peer's web UI over a fresh tunnel
+     * stream. Returns false when the socket must not serve more requests
+     * (connection handed to a raw relay, or the tunnel failed).
+     */
+    private bridgeRequest;
     /** Serve one intercepted fleet request locally; close the socket after. */
     private serveFleetApi;
     private writeHttp;
@@ -83,6 +92,7 @@ export declare class FleetNode {
 }
 export interface ParsedHead {
     method: string;
+    target: string;
     path: string;
     headers: Record<string, string>;
 }
