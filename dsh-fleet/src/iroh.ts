@@ -298,7 +298,12 @@ export class FleetNode {
         }
         if (head === null) break;
         const parsed = parseHead(head);
-        if (parsed === null) break;
+        if (parsed === null) {
+          this.log("gateway " + peer.name + " unparseable head: " + head.toString("latin1").slice(0, 120));
+          detach();
+          this.writeHttp(socket, 400, JSON.stringify({ error: "unparseable request head" }));
+          return;
+        }
         const want = Number.parseInt(parsed.headers["content-length"] ?? "", 10);
         const cl = Number.isFinite(want) && want > 0 ? want : 0;
         // ponytail: whole body buffered before bridging — fine for GUI-sized
@@ -320,6 +325,7 @@ export class FleetNode {
       }
     } catch (error) {
       this.log("gateway " + peer.name + " conn error: " + errorMessage(error));
+      if (!socket.destroyed) this.writeHttp(socket, 502, JSON.stringify({ error: "conn error: " + errorMessage(error) }));
     }
     detach();
     socket.destroy();
@@ -356,8 +362,8 @@ export class FleetNode {
       bi = await conn.openBi();
     } catch (error) {
       this.log("gateway " + peer.name + " openBi: " + errorMessage(error));
-      socket.destroy();
       detach();
+      this.writeHttp(socket, 502, JSON.stringify({ error: "openBi: " + errorMessage(error) }));
       return false;
     }
     this.log("gateway " + peer.name + " bridge " + parsed.method + " " + parsed.target);
@@ -372,8 +378,8 @@ export class FleetNode {
       await bi.send.finish().catch(() => {});
     } catch (error) {
       this.log("gateway " + peer.name + " send: " + errorMessage(error));
-      socket.destroy();
       detach();
+      this.writeHttp(socket, 502, JSON.stringify({ error: "send: " + errorMessage(error) }));
       return false;
     }
 
@@ -388,8 +394,9 @@ export class FleetNode {
     }
     const resp = parseRespHead(respHead);
     if (resp === null) {
-      socket.destroy();
+      this.log("gateway " + peer.name + " unparseable response head: " + respHead.toString("latin1").slice(0, 120));
       detach();
+      this.writeHttp(socket, 502, JSON.stringify({ error: "unparseable response head" }));
       return false;
     }
 

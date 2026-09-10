@@ -497,8 +497,12 @@ var FleetNode = class {
         if (head === null)
           break;
         const parsed = parseHead(head);
-        if (parsed === null)
-          break;
+        if (parsed === null) {
+          this.log("gateway " + peer.name + " unparseable head: " + head.toString("latin1").slice(0, 120));
+          detach();
+          this.writeHttp(socket, 400, JSON.stringify({ error: "unparseable request head" }));
+          return;
+        }
         const want = Number.parseInt(parsed.headers["content-length"] ?? "", 10);
         const cl = Number.isFinite(want) && want > 0 ? want : 0;
         while (pending.length < cl) {
@@ -520,6 +524,8 @@ var FleetNode = class {
       }
     } catch (error) {
       this.log("gateway " + peer.name + " conn error: " + errorMessage(error));
+      if (!socket.destroyed)
+        this.writeHttp(socket, 502, JSON.stringify({ error: "conn error: " + errorMessage(error) }));
     }
     detach();
     socket.destroy();
@@ -544,8 +550,8 @@ var FleetNode = class {
       bi = await conn.openBi();
     } catch (error) {
       this.log("gateway " + peer.name + " openBi: " + errorMessage(error));
-      socket.destroy();
       detach();
+      this.writeHttp(socket, 502, JSON.stringify({ error: "openBi: " + errorMessage(error) }));
       return false;
     }
     this.log("gateway " + peer.name + " bridge " + parsed.method + " " + parsed.target);
@@ -563,8 +569,8 @@ var FleetNode = class {
       });
     } catch (error) {
       this.log("gateway " + peer.name + " send: " + errorMessage(error));
-      socket.destroy();
       detach();
+      this.writeHttp(socket, 502, JSON.stringify({ error: "send: " + errorMessage(error) }));
       return false;
     }
     let respHead;
@@ -578,8 +584,9 @@ var FleetNode = class {
     }
     const resp = parseRespHead(respHead);
     if (resp === null) {
-      socket.destroy();
+      this.log("gateway " + peer.name + " unparseable response head: " + respHead.toString("latin1").slice(0, 120));
       detach();
+      this.writeHttp(socket, 502, JSON.stringify({ error: "unparseable response head" }));
       return false;
     }
     const mark = "dsh-fleet-auth";
