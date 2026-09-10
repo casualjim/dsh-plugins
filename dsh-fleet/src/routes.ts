@@ -105,7 +105,7 @@ export function makeRoutes(deps: RoutesDeps): WebRoute[] {
         const id = typeof (body as { id?: unknown } | undefined)?.id === "string" ? (body as { id: string }).id : undefined;
         if (id === undefined) { writeJson(res, 400, { error: "missing id" }); return; }
         try {
-          writeJson(res, 200, { port: await deps.node().dial(id) });
+          writeJson(res, 200, await deps.node().dial(id));
         } catch (error) { writeJson(res, 503, { error: errorMessage(error) }); }
       },
     },

@@ -24,7 +24,7 @@ assert.ok(existsSync(join(fleetHome(), "config.json")));
 const stub = {
   status: () => ({ self: { id: "aa", name: "n", dsh_port: 3080 }, peers: [] }),
   invite: () => "ticket32",
-  dial: async (id) => { if (id === "known") return 7900; throw new Error("peer offline"); },
+  dial: async (id) => { if (id === "known") return { port: 7900 }; throw new Error("peer offline"); },
   addPeer: async () => {},
 };
 const { makeRoutes } = mod;
@@ -59,6 +59,12 @@ assert.equal(res.state.status, 403);
 res = fakeRes();
 await byPath["/api/dsh-fleet/dial"].handler({ ...fakeReq(), method: "POST" }, res);
 assert.equal(res.state.status, 400);
+
+res = fakeRes();
+await byPath["/api/dsh-fleet/dial"].handler({ ...fakeReq(), method: "POST", [Symbol.asyncIterator]: async function* () { yield new TextEncoder().encode(JSON.stringify({ id: "known" })); } }, res);
+assert.equal(res.state.status, 200);
+assert.ok(res.state.body.includes("7900"));
+assert.ok(!res.state.body.includes('"port":{"port"')); // regress: nested {port:{port,...}} broke client href
 
 rmSync(process.env.DSH_HOME, { recursive: true, force: true });
 console.log("dsh-fleet smoke: all assertions passed");

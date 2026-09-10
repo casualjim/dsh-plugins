@@ -662,7 +662,7 @@ function makeRoutes(deps) {
           return;
         }
         try {
-          writeJson(res, 200, { port: await deps.node().dial(id) });
+          writeJson(res, 200, await deps.node().dial(id));
         } catch (error) {
           writeJson(res, 503, { error: errorMessage(error) });
         }
