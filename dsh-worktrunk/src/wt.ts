@@ -13,6 +13,8 @@
  * a DSH profile.
  */
 
+import type { RepoFacts, WorktreeChanges, WorktreeHead, WorktreeUpstream } from './contract.js'
+
 /** Collect caps for `wt` stdout/stderr (list JSON can be a few hundred KB). */
 const WT_COLLECT_BYTES = 8 << 20;
 /** Grace for the SIGTERM → SIGKILL escalation when a `wt` child is aborted. */
@@ -100,9 +102,44 @@ export interface WtEntry {
 	path: string
 	isMain: boolean
 	isCurrent: boolean
+	detached: boolean
+	branchMismatch: boolean
+	duplicateBranch: boolean
+	head: WorktreeHead | null
+	changes: WorktreeChanges
+	upstream: WorktreeUpstream | null
 	headSha: string | null
 	headShortSha: string | null
 	headSubject: string | null
+}
+
+function numberOrZero(value: unknown): number {
+	return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function stringOrNull(value: unknown): string | null {
+	return typeof value === 'string' ? value : null
+}
+
+/** Schema-2 dirty flags; every field absent on schema 1 reads as clean. */
+function normalizeChanges(worktree: Record<string, unknown>): WorktreeChanges {
+	const raw = (worktree.changes ?? {}) as Record<string, unknown>
+	return {
+		staged: raw.staged === true,
+		modified: raw.modified === true,
+		untracked: raw.untracked === true,
+		renamed: raw.renamed === true,
+		deleted: raw.deleted === true,
+		conflicted: raw.conflicted === true,
+	}
+}
+
+/** Schema-2 upstream tracking facts; `null` when the item reports none. */
+function normalizeUpstream(item: Record<string, unknown>): WorktreeUpstream | null {
+	const raw = item.upstream
+	if (typeof raw !== 'object' || raw === null) return null
+	const record = raw as Record<string, unknown>
+	return { remote: stringOrNull(record.remote), branch: stringOrNull(record.branch), ahead: numberOrZero(record.ahead), behind: numberOrZero(record.behind) }
 }
 
 /**
@@ -116,32 +153,53 @@ export function normalizeEntry(item: Record<string, unknown>): WtEntry | null {
 	const head = (item.head ?? item.commit ?? {}) as Record<string, unknown>
 	const path = typeof worktree.path === 'string' ? worktree.path : typeof item.path === 'string' ? item.path : null
 	if (path === null) return null
+	const sha = typeof head.sha === 'string' ? head.sha : null
+	const shortSha = typeof head.short_sha === 'string' ? head.short_sha : null
+	const subject = typeof head.subject === 'string' ? head.subject : null
 	return {
 		branch,
 		path,
 		isMain: worktree.main === true || item.main === true,
 		isCurrent: worktree.current === true || item.current === true,
-		headSha: typeof head.sha === 'string' ? head.sha : null,
-		headShortSha: typeof head.short_sha === 'string' ? head.short_sha : null,
-		headSubject: typeof head.subject === 'string' ? head.subject : null,
+		detached: worktree.detached === true,
+		branchMismatch: worktree.branch_mismatch === true,
+		duplicateBranch: worktree.duplicate_branch === true,
+		head: sha === null ? null : { sha, shortSha: shortSha ?? sha.slice(0, 7), subject: subject ?? '', committedAt: stringOrNull(head.committed_at) },
+		changes: normalizeChanges(worktree),
+		upstream: normalizeUpstream(item),
+		headSha: sha,
+		headShortSha: shortSha,
+		headSubject: subject,
 	}
 }
 
-/** List worktrees of the repository containing `cwd` via `wt list --format=json`. */
-export async function listWorktrees(ctx: WtContext, bin: string, cwd: string, signal?: AbortSignal): Promise<WtEntry[]> {
+/** Read `wt list --format=json` once, returning repo facts and normalized entries. */
+export async function listWorktreesFull(ctx: WtContext, bin: string, cwd: string, signal?: AbortSignal): Promise<{ repo: RepoFacts, entries: WtEntry[] }> {
 	const outcome = await runWtOk(ctx, [bin, 'list', '--format=json'], cwd, signal)
 	let parsed: unknown
 	try {
 		parsed = JSON.parse(outcome.stdout)
 	} catch (error) {
-		throw new WtError('BAD_JSON', `\`wt list\` returned invalid JSON: ${(error as Error).message}`)
+		throw new WtError('WT_BAD_JSON', `\`wt list\` returned invalid JSON: ${(error as Error).message}`)
 	}
-	const items = Array.isArray(parsed)
-		? parsed
-		: Array.isArray((parsed as Record<string, unknown>)?.items)
-			? (parsed as { items: unknown[] }).items
-			: []
-	return items.map(item => normalizeEntry(item as Record<string, unknown>)).filter((entry): entry is WtEntry => entry !== null)
+	const record = (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Record<string, unknown>
+	const items = Array.isArray(parsed) ? parsed : Array.isArray(record.items) ? record.items : []
+	const repoRaw = (record.repo ?? {}) as Record<string, unknown>
+	const forgeRaw = (repoRaw.forge ?? {}) as Record<string, unknown>
+	const repo: RepoFacts = {
+		root: cwd,
+		defaultBranch: typeof repoRaw.default_branch === 'string' ? repoRaw.default_branch : 'main',
+		forge: typeof forgeRaw.url === 'string' ? forgeRaw.url : null,
+	}
+	return {
+		repo,
+		entries: items.map(item => normalizeEntry(item as Record<string, unknown>)).filter((entry): entry is WtEntry => entry !== null),
+	}
+}
+
+/** List worktrees of the repository containing `cwd` via `wt list --format=json`. */
+export async function listWorktrees(ctx: WtContext, bin: string, cwd: string, signal?: AbortSignal): Promise<WtEntry[]> {
+	return (await listWorktreesFull(ctx, bin, cwd, signal)).entries
 }
 
 /** Whether `candidate` is `base` itself or a descendant of `base`. */

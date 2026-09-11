@@ -5,12 +5,14 @@ import {
   createArgs,
   isWithin,
   listWorktrees,
+  listWorktreesFull,
   mergeArgs,
   normalizeEntry,
   removeArgs,
   runWt,
   WtError,
   type WtContext,
+  type WtEntry,
 } from '../src/wt.js'
 
 /** Scripted subprocess: one queued outcome per spawn call. */
@@ -101,6 +103,10 @@ describe('normalizeEntry', () => {
     })
     expect(entry).toEqual({
       branch: 'feat', path: '/repo.feat', isMain: false, isCurrent: true,
+      detached: false, branchMismatch: false, duplicateBranch: false,
+      head: { sha: 'abc123', shortSha: 'abc1234', subject: 'Add x', committedAt: null },
+      changes: { staged: false, modified: false, untracked: false, renamed: false, deleted: false, conflicted: false },
+      upstream: null,
       headSha: 'abc123', headShortSha: 'abc1234', headSubject: 'Add x',
     })
   })
@@ -175,7 +181,12 @@ describe('/wt command', () => {
 })
 
 describe('session-worktree guard', () => {
-  const entry = { branch: 'feat', path: '/repo/wt.feat', isMain: false, isCurrent: false, headSha: null, headShortSha: null, headSubject: null }
+  const entry: WtEntry = {
+    branch: 'feat', path: '/repo/wt.feat', isMain: false, isCurrent: false, detached: false, branchMismatch: false, duplicateBranch: false,
+    head: null, upstream: null,
+    changes: { staged: false, modified: false, untracked: false, renamed: false, deleted: false, conflicted: false },
+    headSha: null, headShortSha: null, headSubject: null,
+  }
 
   it('refuses when the session cwd is inside the worktree', () => {
     expect(() => assertNotSessionWorktree(entry, '/repo/wt.feat/sub', 'remove')).toThrow(/this session is running inside/)
@@ -212,5 +223,41 @@ describe('isWithin', () => {
     expect(isWithin('/r/wt.feat', '/r/wt.feat')).toBe(true)
     expect(isWithin('/r/wt.feat', '/r/wt.feat/sub')).toBe(true)
     expect(isWithin('/r/wt.feat', '/r/wt.feature')).toBe(false)
+  })
+})
+
+const SCHEMA2 = JSON.stringify({
+  schema: 2,
+  repo: { default_branch: 'main', forge: { url: 'https://github.com/acme/repo' } },
+  items: [
+    {
+      branch: 'main',
+      head: { sha: 'a'.repeat(40), short_sha: 'aaaaaaa', subject: 'init', committed_at: '2026-09-11T00:00:00Z' },
+      worktree: { path: '/repo', main: true, current: true, detached: false, branch_mismatch: false, duplicate_branch: false,
+        changes: { staged: true, modified: false, untracked: true, renamed: false, deleted: false, conflicted: false } },
+      upstream: { remote: 'origin', branch: 'main', ahead: 2, behind: 1 },
+    },
+    {
+      branch: 'feature/x',
+      head: { sha: 'b'.repeat(40), short_sha: 'bbbbbbb', subject: 'work' },
+      worktree: { path: '/wt/x', main: false, current: false, detached: true, branch_mismatch: true, duplicate_branch: false,
+        changes: { staged: false, modified: true, untracked: false, renamed: false, deleted: false, conflicted: false } },
+    },
+  ],
+})
+
+describe('schema-2 facts', () => {
+  it('normalizes repo facts and dirty/detached/upstream state', async () => {
+    const subprocess = fakeSubprocess([{ stdout: SCHEMA2 }])
+    const full = await listWorktreesFull({ subprocess } as never, 'wt', '/repo')
+    expect(full.repo).toEqual({ root: '/repo', defaultBranch: 'main', forge: 'https://github.com/acme/repo' })
+    const main = full.entries[0] as WtEntry
+    expect(main.changes).toEqual({ staged: true, modified: false, untracked: true, renamed: false, deleted: false, conflicted: false })
+    expect(main.upstream).toEqual({ remote: 'origin', branch: 'main', ahead: 2, behind: 1 })
+    expect(main.head).toEqual({ sha: 'a'.repeat(40), shortSha: 'aaaaaaa', subject: 'init', committedAt: '2026-09-11T00:00:00Z' })
+    const feature = full.entries[1] as WtEntry
+    expect(feature.detached).toBe(true)
+    expect(feature.branchMismatch).toBe(true)
+    expect(feature.upstream).toBeNull()
   })
 })
