@@ -112,11 +112,20 @@ export const WORKTREE_ERROR_CODES: readonly WorktreeErrorCode[] = [
 	'NOT_FOUND',
 ] as const
 
+/** JSON-safe value: the only data shape Typert lets cross the Remote boundary. */
+export type WorktrunkJsonValue =
+	| string
+	| number
+	| boolean
+	| null
+	| readonly WorktrunkJsonValue[]
+	| { readonly [key: string]: WorktrunkJsonValue }
+
 /** JSON-safe failure value. */
 export interface WorktrunkFailure {
 	readonly code: WorktreeErrorCode
 	readonly message: string
-	readonly details: Readonly<Record<string, unknown>>
+	readonly details: Readonly<Record<string, WorktrunkJsonValue>>
 }
 
 /** Every remote method resolves to this envelope. */
@@ -128,7 +137,7 @@ export type WorktrunkRemoteResult<Value> =
 export function createWorktrunkFailure(
 	code: WorktreeErrorCode,
 	message: string,
-	details: Readonly<Record<string, unknown>> = {},
+	details: Readonly<Record<string, WorktrunkJsonValue>> = {},
 ): WorktrunkFailure {
 	return { code, message, details }
 }

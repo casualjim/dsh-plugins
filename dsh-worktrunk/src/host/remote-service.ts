@@ -1,6 +1,6 @@
 import type { Context } from '@deepseek-ai/cordis'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
-import type { WorktrunkRemoteResult } from '../contract.js'
+import type { HookSpec, PanelSnapshot, WorktrunkRemoteResult } from '../contract.js'
 import { createWorktrunkService, type WorktrunkServiceConfig } from './service.js'
 import { createWorktrunkRemoteProjection, type WorktrunkRemoteManager } from './remote.js'
 
@@ -22,17 +22,17 @@ export class WorktrunkRemoteService extends TypertRemoteService {
 	}
 
 	@Remote
-	readPanel(input: { workspaceId: string }): Promise<WorktrunkRemoteResult<unknown>> {
+	readPanel(input: { workspaceId: string }): Promise<WorktrunkRemoteResult<PanelSnapshot>> {
 		return this.remote.readPanel(input)
 	}
 
 	@Remote
-	previewHooks(input: { workspaceId: string }): Promise<WorktrunkRemoteResult<unknown>> {
+	previewHooks(input: { workspaceId: string }): Promise<WorktrunkRemoteResult<readonly HookSpec[]>> {
 		return this.remote.previewHooks(input)
 	}
 
 	@Remote
-	createWorktree(input: { workspaceId: string, branch: string, base?: string, skipHooks?: boolean }): Promise<WorktrunkRemoteResult<unknown>> {
+	createWorktree(input: { workspaceId: string, branch: string, base?: string, skipHooks?: boolean }): Promise<WorktrunkRemoteResult<{ path: string, branch: string, hooksRan: boolean, registrationWarning?: string }>> {
 		return this.remote.createWorktree(input)
 	}
 
@@ -52,12 +52,12 @@ export class WorktrunkRemoteService extends TypertRemoteService {
 	}
 
 	@Remote
-	openWorktree(input: { workspaceId: string, path: string, branch: string }): Promise<WorktrunkRemoteResult<unknown>> {
+	openWorktree(input: { workspaceId: string, path: string, branch: string }): Promise<WorktrunkRemoteResult<{ workspaceId?: string }>> {
 		return this.remote.openWorktree(input)
 	}
 
 	@Remote
-	ensureWorktreePermission(input: { sessionId: string }): Promise<WorktrunkRemoteResult<unknown>> {
+	ensureWorktreePermission(input: { sessionId: string }): Promise<WorktrunkRemoteResult<{ status: string, preset?: string }>> {
 		return this.remote.ensureWorktreePermission(input)
 	}
 }

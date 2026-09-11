@@ -59,6 +59,32 @@ export async function runWtOk(ctx, argv, cwd, signal) {
     }
     return outcome;
 }
+function numberOrZero(value) {
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+function stringOrNull(value) {
+    return typeof value === 'string' ? value : null;
+}
+/** Schema-2 dirty flags; every field absent on schema 1 reads as clean. */
+function normalizeChanges(worktree) {
+    const raw = (worktree.changes ?? {});
+    return {
+        staged: raw.staged === true,
+        modified: raw.modified === true,
+        untracked: raw.untracked === true,
+        renamed: raw.renamed === true,
+        deleted: raw.deleted === true,
+        conflicted: raw.conflicted === true,
+    };
+}
+/** Schema-2 upstream tracking facts; `null` when the item reports none. */
+function normalizeUpstream(item) {
+    const raw = item.upstream;
+    if (typeof raw !== 'object' || raw === null)
+        return null;
+    const record = raw;
+    return { remote: stringOrNull(record.remote), branch: stringOrNull(record.branch), ahead: numberOrZero(record.ahead), behind: numberOrZero(record.behind) };
+}
 /**
  * Normalize one `wt list --format=json` item. Schema 2 nests facts under
  * `worktree`/`head`; schema 1 keeps them top-level (`path`, `commit`).
@@ -72,36 +98,62 @@ export function normalizeEntry(item) {
     const path = typeof worktree.path === 'string' ? worktree.path : typeof item.path === 'string' ? item.path : null;
     if (path === null)
         return null;
+    const sha = typeof head.sha === 'string' ? head.sha : null;
+    const shortSha = typeof head.short_sha === 'string' ? head.short_sha : null;
+    const subject = typeof head.subject === 'string' ? head.subject : null;
     return {
         branch,
         path,
         isMain: worktree.main === true || item.main === true,
         isCurrent: worktree.current === true || item.current === true,
-        headSha: typeof head.sha === 'string' ? head.sha : null,
-        headShortSha: typeof head.short_sha === 'string' ? head.short_sha : null,
-        headSubject: typeof head.subject === 'string' ? head.subject : null,
+        detached: worktree.detached === true,
+        branchMismatch: worktree.branch_mismatch === true,
+        duplicateBranch: worktree.duplicate_branch === true,
+        head: sha === null ? null : { sha, shortSha: shortSha ?? sha.slice(0, 7), subject: subject ?? '', committedAt: stringOrNull(head.committed_at) },
+        changes: normalizeChanges(worktree),
+        upstream: normalizeUpstream(item),
+        headSha: sha,
+        headShortSha: shortSha,
+        headSubject: subject,
     };
 }
-/** List worktrees of the repository containing `cwd` via `wt list --format=json`. */
-export async function listWorktrees(ctx, bin, cwd, signal) {
+/** Read `wt list --format=json` once, returning repo facts and normalized entries. */
+export async function listWorktreesFull(ctx, bin, cwd, signal) {
     const outcome = await runWtOk(ctx, [bin, 'list', '--format=json'], cwd, signal);
     let parsed;
     try {
         parsed = JSON.parse(outcome.stdout);
     }
     catch (error) {
-        throw new WtError('BAD_JSON', `\`wt list\` returned invalid JSON: ${error.message}`);
+        throw new WtError('WT_BAD_JSON', `\`wt list\` returned invalid JSON: ${error.message}`);
     }
-    const items = Array.isArray(parsed)
-        ? parsed
-        : Array.isArray(parsed?.items)
-            ? parsed.items
-            : [];
-    return items.map(item => normalizeEntry(item)).filter((entry) => entry !== null);
+    const record = (typeof parsed === 'object' && parsed !== null ? parsed : {});
+    const items = Array.isArray(parsed) ? parsed : Array.isArray(record.items) ? record.items : [];
+    const repoRaw = (record.repo ?? {});
+    const forgeRaw = (repoRaw.forge ?? {});
+    const repo = {
+        root: cwd,
+        defaultBranch: typeof repoRaw.default_branch === 'string' ? repoRaw.default_branch : 'main',
+        forge: typeof forgeRaw.url === 'string' ? forgeRaw.url : null,
+    };
+    return {
+        repo,
+        entries: items.map(item => normalizeEntry(item)).filter((entry) => entry !== null),
+    };
+}
+/** List worktrees of the repository containing `cwd` via `wt list --format=json`. */
+export async function listWorktrees(ctx, bin, cwd, signal) {
+    return (await listWorktreesFull(ctx, bin, cwd, signal)).entries;
 }
 /** Whether `candidate` is `base` itself or a descendant of `base`. */
 export function isWithin(base, candidate) {
     return candidate === base || candidate.startsWith(base.endsWith('/') ? base : `${base}/`);
+}
+/** Refuse an operation that would delete the worktree this session runs inside. */
+export function assertNotSessionWorktree(entry, cwd, action) {
+    if (entry !== undefined && isWithin(entry.path, cwd)) {
+        throw new WtError('SESSION_WORKTREE', `Refusing to ${action} the worktree at ${entry.path}: this session is running inside it. Start a session elsewhere first.`);
+    }
 }
 /** argv for creating a branch + worktree (hooks run unless `hooks: false`). */
 export function createArgs(bin, options) {
@@ -156,4 +208,40 @@ export function copyIgnoredArgs(bin, options = {}) {
         ...(options.force === true ? ['--force'] : []),
         ...(options.requireInclude === true ? ['--require-include'] : []),
     ];
+}
+/** Shown when the `wt` binary cannot be started. */
+export const WORKTRUNK_INSTALL_HINT = 'worktrunk is not installed or not on PATH. Install it with `brew install worktrunk` or `cargo install worktrunk`, then restart DSH.';
+/** Normalize one `wt hook show --format=json` row. */
+export function normalizeHookSpec(item) {
+    const name = typeof item.name === 'string' ? item.name : null;
+    const type = typeof item.type === 'string' ? item.type : null;
+    const template = typeof item.template === 'string' ? item.template : null;
+    if (name === null || type === null || template === null)
+        return null;
+    return {
+        name,
+        type,
+        template,
+        source: item.source === 'user' ? 'user' : 'project',
+        needsApproval: item.needs_approval === true,
+    };
+}
+/**
+ * Read the hooks `wt` would run for this repository. `wt` owns hook discovery, so
+ * this is one native call rather than a TOML parse; a missing project config is `[]`.
+ */
+export async function hookSpecs(ctx, bin, cwd, signal) {
+    const outcome = await runWtOk(ctx, [bin, 'hook', 'show', '--format=json'], cwd, signal);
+    let parsed;
+    try {
+        parsed = JSON.parse(outcome.stdout);
+    }
+    catch (error) {
+        throw new WtError('WT_BAD_JSON', `\`wt hook show\` returned invalid JSON: ${error.message}`);
+    }
+    if (!Array.isArray(parsed))
+        return [];
+    return parsed
+        .map(item => normalizeHookSpec(item))
+        .filter((spec) => spec !== null);
 }

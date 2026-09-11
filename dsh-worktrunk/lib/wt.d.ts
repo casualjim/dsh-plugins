@@ -12,6 +12,7 @@
  * `ctx.subprocess` (see `WtRunner`), so the logic is testable without booting
  * a DSH profile.
  */
+import type { RepoFacts, WorktreeChanges, WorktreeHead, WorktreeUpstream } from './contract.js';
 /** A stable, machine-readable failure; message is user-facing verbatim. */
 export declare class WtError extends Error {
     readonly code: string;
@@ -72,6 +73,12 @@ export interface WtEntry {
     path: string;
     isMain: boolean;
     isCurrent: boolean;
+    detached: boolean;
+    branchMismatch: boolean;
+    duplicateBranch: boolean;
+    head: WorktreeHead | null;
+    changes: WorktreeChanges;
+    upstream: WorktreeUpstream | null;
     headSha: string | null;
     headShortSha: string | null;
     headSubject: string | null;
@@ -81,10 +88,17 @@ export interface WtEntry {
  * `worktree`/`head`; schema 1 keeps them top-level (`path`, `commit`).
  */
 export declare function normalizeEntry(item: Record<string, unknown>): WtEntry | null;
+/** Read `wt list --format=json` once, returning repo facts and normalized entries. */
+export declare function listWorktreesFull(ctx: WtContext, bin: string, cwd: string, signal?: AbortSignal): Promise<{
+    repo: RepoFacts;
+    entries: WtEntry[];
+}>;
 /** List worktrees of the repository containing `cwd` via `wt list --format=json`. */
 export declare function listWorktrees(ctx: WtContext, bin: string, cwd: string, signal?: AbortSignal): Promise<WtEntry[]>;
 /** Whether `candidate` is `base` itself or a descendant of `base`. */
 export declare function isWithin(base: string, candidate: string): boolean;
+/** Refuse an operation that would delete the worktree this session runs inside. */
+export declare function assertNotSessionWorktree(entry: WtEntry | undefined, cwd: string, action: string): void;
 /** argv for creating a branch + worktree (hooks run unless `hooks: false`). */
 export declare function createArgs(bin: string, options: {
     branch: string;
@@ -117,3 +131,13 @@ export declare function copyIgnoredArgs(bin: string, options?: {
     force?: boolean;
     requireInclude?: boolean;
 }): string[];
+import type { HookSpec } from './contract.js';
+/** Shown when the `wt` binary cannot be started. */
+export declare const WORKTRUNK_INSTALL_HINT = "worktrunk is not installed or not on PATH. Install it with `brew install worktrunk` or `cargo install worktrunk`, then restart DSH.";
+/** Normalize one `wt hook show --format=json` row. */
+export declare function normalizeHookSpec(item: Record<string, unknown>): HookSpec | null;
+/**
+ * Read the hooks `wt` would run for this repository. `wt` owns hook discovery, so
+ * this is one native call rather than a TOML parse; a missing project config is `[]`.
+ */
+export declare function hookSpecs(ctx: WtContext, bin: string, cwd: string, signal?: AbortSignal): Promise<HookSpec[]>;

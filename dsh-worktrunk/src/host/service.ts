@@ -42,7 +42,7 @@ export interface WorktrunkService {
 	removeWorktree(input: { workspaceId: string, branch: string, force?: boolean, forceDeleteBranch?: boolean, keepBranch?: boolean, currentCwd?: string }, signal?: AbortSignal): Promise<{ removed: true }>
 	mergeWorktree(input: { workspaceId: string, branch: string, target?: string, keepCommit?: boolean, keepWorktree?: boolean, currentCwd?: string }, signal?: AbortSignal): Promise<{ merged: true }>
 	copyIgnored(input: { workspaceId: string, path?: string, force?: boolean, requireInclude?: boolean }, signal?: AbortSignal): Promise<{ ok: true }>
-	openWorktree(input: { workspaceId: string, path: string, branch: string }): Promise<{ workspaceId: string | undefined }>
+	openWorktree(input: { workspaceId: string, path: string, branch: string }): Promise<{ workspaceId?: string }>
 	ensureWorktreePermission(input: { sessionId: string }): Promise<{ status: string, preset?: string }>
 }
 

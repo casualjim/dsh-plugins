@@ -6,6 +6,8 @@
 import {
 	WORKTREE_ERROR_CODES,
 	createWorktrunkFailure,
+	type HookSpec,
+	type PanelSnapshot,
 	type WorktreeErrorCode,
 	type WorktrunkFailure,
 	type WorktrunkRemoteResult,
@@ -33,16 +35,20 @@ async function project<Value>(operation: () => Promise<Value>): Promise<Worktrun
 	}
 }
 
-/** The method surface the Typert descriptors expose. */
+/**
+ * The method surface the Typert descriptors expose. Every value type is named
+ * and JSON-safe on purpose: the generator rejects `unknown`, bare `any`, and
+ * optionality expressed as `string | undefined` at a Remote boundary.
+ */
 export interface WorktrunkRemoteManager {
-	readPanel(input: { workspaceId: string }): Promise<WorktrunkRemoteResult<unknown>>
-	previewHooks(input: { workspaceId: string }): Promise<WorktrunkRemoteResult<unknown>>
-	createWorktree(input: { workspaceId: string, branch: string, base?: string, skipHooks?: boolean }): Promise<WorktrunkRemoteResult<unknown>>
+	readPanel(input: { workspaceId: string }): Promise<WorktrunkRemoteResult<PanelSnapshot>>
+	previewHooks(input: { workspaceId: string }): Promise<WorktrunkRemoteResult<readonly HookSpec[]>>
+	createWorktree(input: { workspaceId: string, branch: string, base?: string, skipHooks?: boolean }): Promise<WorktrunkRemoteResult<{ path: string, branch: string, hooksRan: boolean, registrationWarning?: string }>>
 	removeWorktree(input: { workspaceId: string, branch: string, force?: boolean, forceDeleteBranch?: boolean, keepBranch?: boolean, currentCwd?: string }): Promise<WorktrunkRemoteResult<null>>
 	mergeWorktree(input: { workspaceId: string, branch: string, target?: string, keepCommit?: boolean, keepWorktree?: boolean, currentCwd?: string }): Promise<WorktrunkRemoteResult<null>>
 	copyIgnored(input: { workspaceId: string, path?: string, force?: boolean, requireInclude?: boolean }): Promise<WorktrunkRemoteResult<null>>
-	openWorktree(input: { workspaceId: string, path: string, branch: string }): Promise<WorktrunkRemoteResult<unknown>>
-	ensureWorktreePermission(input: { sessionId: string }): Promise<WorktrunkRemoteResult<unknown>>
+	openWorktree(input: { workspaceId: string, path: string, branch: string }): Promise<WorktrunkRemoteResult<{ workspaceId?: string }>>
+	ensureWorktreePermission(input: { sessionId: string }): Promise<WorktrunkRemoteResult<{ status: string, preset?: string }>>
 }
 
 /** Wrap the service in the wire contract. */

@@ -25,6 +25,10 @@
       "types": "./lib/typert.host.d.ts",
       "default": "./lib/typert.host.js"
     },
+    "./contract": {
+      "types": "./lib/contract.d.ts",
+      "default": "./lib/contract.js"
+    },
     "./remote": {
       "types": "./lib/typert.remote-client.d.ts",
       "default": "./lib/typert.remote-client.js"
@@ -53,6 +57,9 @@
     "build": "tsc && node scripts/generate-typert.mjs && node scripts/build-client.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.test.json"
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",

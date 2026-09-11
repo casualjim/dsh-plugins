@@ -22,16 +22,19 @@
  */
 import { defineTool } from '@deepseek-ai/dsh-tools';
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { copyIgnoredArgs, createArgs, isWithin, listWorktrees, mergeArgs, removeArgs, runWtOk, WtError } from './wt.js';
+import { assertNotSessionWorktree, copyIgnoredArgs, createArgs, isWithin, listWorktrees, mergeArgs, removeArgs, runWtOk, WtError } from './wt.js';
+import { registerWorkspace, unregisterWorkspace } from './host/workspace.js';
+import { WorktrunkRemoteService } from './host/remote-service.js';
+// The guard lives in the `wt` core so host-side code can use it without importing
+// this module (which would cycle once the host remote mounts from here).
+export { assertNotSessionWorktree };
+export { WorktrunkRemoteService } from './host/remote-service.js';
 export const name = 'dsh-worktrunk';
 export const inject = ['tools', 'commands', 'subprocess'];
 /** Resolve the working directory a tool/command call operates from. */
 function sessionCwd(agent) {
     const header = agent?.session?.header;
     return header?.cwd ?? process.cwd();
-}
-function registry(ctx) {
-    return ctx.get('workspaceRegistry');
 }
 /** Render one list row. */
 function renderEntry(entry) {
@@ -53,44 +56,6 @@ async function findBranch(ctx, config, cwd, branch, signal) {
 }
 /** Append to merge failures: how to back a half-finished merge out. */
 const MERGE_RECOVERY_HINT = 'If a merge was left in progress, resolve the conflicts and run `git merge --continue`, or run `git merge --abort` in the affected worktree to back out.';
-/** Refuse an operation that would delete the worktree this session runs inside. */
-export function assertNotSessionWorktree(entry, cwd, action) {
-    if (entry !== undefined && isWithin(entry.path, cwd)) {
-        throw new WtError('SESSION_WORKTREE', `Refusing to ${action} the worktree at ${entry.path}: this session is running inside it. Start a session elsewhere first.`);
-    }
-}
-/**
- * Register (or refresh) the worktree's DSH workspace registration. Best
- * effort: a registry failure never fails the underlying wt operation.
- */
-async function registerWorkspace(ctx, path, branch, config) {
-    const reg = registry(ctx);
-    if (reg === undefined)
-        return undefined;
-    try {
-        const existing = await reg.resolveByPath(path);
-        if (existing === undefined)
-            await reg.create(path, `${config.labelPrefix} ${branch}`);
-        return undefined;
-    }
-    catch (error) {
-        return `workspace registration skipped: ${error.message}`;
-    }
-}
-/** Best-effort removal of a worktree's workspace registration. */
-async function unregisterWorkspace(ctx, path) {
-    const reg = registry(ctx);
-    if (reg === undefined)
-        return;
-    try {
-        const workspace = await reg.resolveByPath(path);
-        if (workspace !== undefined)
-            await reg.delete(workspace.id);
-    }
-    catch {
-        // Stale registration is harmless; the worktree itself is already gone.
-    }
-}
 /** Register the four model-facing worktrunk tools. */
 function registerTools(ctx, config) {
     ctx.tools.register(defineTool({
@@ -128,7 +93,7 @@ function registerTools(ctx, config) {
             const path = entry?.path;
             if (path === undefined)
                 throw new WtError('NOT_FOUND', `worktree for ${JSON.stringify(args.branch)} not found after creation — check \`worktrunk_list\`.`);
-            const warning = await registerWorkspace(ctx, path, args.branch, config);
+            const warning = await registerWorkspace(ctx, path, args.branch, config.labelPrefix);
             return { branch: args.branch, path, ...(warning !== undefined ? { registrationWarning: warning } : {}) };
         },
         presentCall: args => ({ card: 'generic', title: 'Create worktrunk worktree', kind: 'other', rawInput: args }),
@@ -330,7 +295,7 @@ async function executeWtCommand(ctx, config, invocation) {
                 await runWtOk(ctx, createArgs(config.bin, { branch: parsed.branch, base: parsed.base }), cwd, invocation.signal);
                 const entry = await findBranch(ctx, config, cwd, parsed.branch, invocation.signal);
                 const path = entry?.path ?? '(unknown — run /wt list)';
-                const warning = await registerWorkspace(ctx, path, parsed.branch, config);
+                const warning = await registerWorkspace(ctx, path, parsed.branch, config.labelPrefix);
                 return {
                     kind: 'success',
                     text: [
@@ -344,7 +309,7 @@ async function executeWtCommand(ctx, config, invocation) {
                 const entry = await findBranch(ctx, config, cwd, parsed.branch, invocation.signal);
                 if (entry === undefined)
                     return { kind: 'error', text: `no worktree for branch ${JSON.stringify(parsed.branch)} — create it with /wt create.` };
-                const warning = await registerWorkspace(ctx, entry.path, entry.branch, config);
+                const warning = await registerWorkspace(ctx, entry.path, entry.branch, config.labelPrefix);
                 return {
                     kind: 'success',
                     text: [
@@ -463,4 +428,5 @@ export function apply(ctx, config = {}) {
     registerTools(ctx, resolved);
     registerCommand(ctx, resolved);
     registerContextNote(ctx, resolved);
+    ctx.plugin(WorktrunkRemoteService, { bin: resolved.bin, labelPrefix: resolved.labelPrefix });
 }
