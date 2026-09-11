@@ -39,7 +39,10 @@ async function workspacePath(ctx: WorktrunkServiceContext, workspaceId: string):
 }
 
 /** Whether the registry already knows this path; either registry face counts. */
-async function isRegistered(registry: WorkspaceRegistry | undefined, path: string): Promise<boolean> {
+async function isRegistered(ctx: WorktrunkServiceContext, path: string): Promise<boolean> {
+	// Resolved per call, like the rest of `workspace.ts`: the registry service may
+	// appear on the context after this service is constructed.
+	const registry = registryOf(ctx as unknown as Context) as WorkspaceRegistry | undefined
 	if (registry === undefined) return false
 	if (registry.resolveByPath !== undefined && (await registry.resolveByPath(path)) !== undefined) return true
 	return (registry.list?.() ?? []).some(workspace => workspace.path === path)
@@ -71,8 +74,6 @@ function sessionSources(ctx: WorktrunkServiceContext): SessionSources {
 
 /** Build the panel-facing service over one Cordis context. */
 export function createWorktrunkService(ctx: WorktrunkServiceContext, config: WorktrunkServiceConfig): WorktrunkService {
-	const registry = registryOf(ctx as unknown as Context)
-
 	async function readRows(root: string, signal?: AbortSignal): Promise<{ repo: RepoFacts, items: WorktreeRow[] }> {
 		const [full, refs] = await Promise.all([
 			listWorktreesFull(ctx, config.bin, root, signal),
@@ -80,7 +81,7 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 		])
 		const items: WorktreeRow[] = []
 		for (const entry of full.entries) {
-			items.push(rowOf(entry, sessionsForWorktree(refs, entry.path), await isRegistered(registry, entry.path)))
+			items.push(rowOf(entry, sessionsForWorktree(refs, entry.path), await isRegistered(ctx, entry.path)))
 		}
 		// One panel read = one `wt list`: that listing reports repo facts (root =
 		// the workspace path it ran in) alongside every worktree of the repo, so a

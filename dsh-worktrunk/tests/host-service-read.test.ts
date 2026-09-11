@@ -57,6 +57,21 @@ describe('worktrunk service reads', () => {
     expect(panel.hooks).toEqual([{ name: 'install', needsApproval: true, source: 'project', template: 'mise install', type: 'pre-start' }])
   })
 
+  it('resolves the registry lazily, so a registry that appears after construction still marks rows registered', async () => {
+    const services: Record<string, unknown> = {}
+    const { ctx } = fakeCtx([{ stdout: LIST }, { stdout: HOOKS }], services)
+    const service = createWorktrunkService(ctx as never, { bin: 'wt', labelPrefix: '[wt]' })
+    services.workspaceRegistry = {
+      get: (id: string) => (id === 'w1' ? { id: 'w1', path: '/repo' } : undefined),
+      list: () => [{ id: 'w1', path: '/repo' }],
+      resolveByPath: async (path: string) => (path === '/wt/a' ? { id: 'w2' } : undefined),
+    }
+
+    const panel = await service.readPanel({ workspaceId: 'w1' })
+
+    expect(panel.items.map(item => item.registered)).toEqual([true, true])
+  })
+
   it('degrades to no hooks instead of failing the panel read', async () => {
     const { ctx } = fakeCtx([{ stdout: LIST }, { exitCode: 1 }], { workspaceRegistry: { list: () => [{ id: 'w1', path: '/repo' }] } })
     const service = createWorktrunkService(ctx as never, { bin: 'wt', labelPrefix: '[wt]' })
