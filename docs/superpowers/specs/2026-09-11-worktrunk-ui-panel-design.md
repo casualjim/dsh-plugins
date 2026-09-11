@@ -81,13 +81,13 @@ dsh-worktrunk/
 │   ├── generate-typert.mjs   Typert host + remote artifacts from the host face
 │   └── build-client.mjs      browser closure-factory bundle
 ├── src/
-│   ├── wt.ts                 unchanged: argv builders, JSON normalization, runWt/runWtOk, WtError
+│   ├── wt.ts                 argv builders, JSON normalization, runWt/runWtOk, WtError (gains additive fields; existing tool behaviour unchanged)
 │   ├── index.ts              apply(): tools + /wt + session context note (unchanged behaviour)
 │   ├── contract.ts           wire vocabulary; imports nothing
 │   ├── host/
 │   │   ├── service.ts        WorktrunkService: the only wt execution path for the UI
 │   │   ├── remote.ts         Typert remote projection of the service
-│   │   ├── sessions.ts       session header index: cwd → worktree → SessionRow[]
+│   │   ├── sessions.ts       session header index: cwd → worktree → WorktreeSessionRef[]
 │   │   ├── permission.ts     permissionPresets adapter: read, apply, report
 │   │   └── workspace.ts      repo/workspace resolution + workspace registration refresh
 │   └── client/
@@ -95,7 +95,7 @@ dsh-worktrunk/
 │       ├── index.ts          browser-safe exports
 │       ├── connection.ts     the single /api adapter and error normalizer
 │       ├── store.ts          panel store: rows, selection, refresh generation, late-result guard
-│       └── panel/            WorktreePanel, WorktreeRow, SessionRow, dialogs
+│       └── panel/            WorktreePanel, WorktreeRow, session rows, dialogs
 └── tests/                    vitest
 ```
 
@@ -124,16 +124,13 @@ interface WorktreeRow {
   head: { sha: string; shortSha: string; subject: string; committedAt: string } | null
   changes: { staged: boolean; modified: boolean; untracked: boolean; renamed: boolean; deleted: boolean; conflicted: boolean }
   upstream: { ahead: number; behind: number } | null
-  sessions: SessionRow[]
+  sessions: WorktreeSessionRef[]
   registered: boolean          // already a DSH workspace
 }
 
-interface SessionRow {
+interface WorktreeSessionRef {
   id: string
-  title: string
-  updatedAt: number | null
   cwd: string
-  status: string
 }
 
 interface HookSpec {
@@ -177,6 +174,13 @@ Channel: the plugin's Typert remote on DSH's existing `/api`, methods namespaced
 
 The service never mutates DSH-owned data beyond applying a permission preset to one session
 and refreshing workspace registration — both of which the plugin already does today.
+
+The host resolves each worktree's `sessions` from live `ctx.sessions` headers merged with
+`ctx.sessionPersistence.list()` (headers only — never a transcript) and matches them by `cwd`.
+So the host owns **membership** (session id + cwd) and the client owns **presentation** (title,
+relative time, status) by joining those ids against the native session-list snapshot. A session
+appears under its worktree because it actually runs there, including sessions started from the
+native sidebar.
 
 ## 7. Panel (client)
 
@@ -347,7 +351,8 @@ output):
 - drag reordering of worktrees, five-row session overflow, hover detail cards, `shell.overlay`
   geometry, the Hero/composer context chips, and the native permission-icon renderer;
 - `zh` locale, npm publishing, plugin-market packaging;
-- any change to `wt.ts`, the five tools, or the existing `/wt` verbs.
+- out of scope: any behaviour change to the five tools or the existing `/wt` verbs, and any
+  structural change to `wt.ts` beyond additive fields and new read functions.
 
 Each excluded item is a separate future initiative, not a placeholder in this one.
 
