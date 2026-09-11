@@ -24,8 +24,12 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandDefinition } from '@deepseek-ai/dsh-commands'
-import { copyIgnoredArgs, createArgs, isWithin, listWorktrees, mergeArgs, removeArgs, runWtOk, WtError, type WtContext, type WtEntry } from './wt.js'
+import { assertNotSessionWorktree, copyIgnoredArgs, createArgs, isWithin, listWorktrees, mergeArgs, removeArgs, runWtOk, WtError, type WtContext, type WtEntry } from './wt.js'
 import { registerWorkspace, unregisterWorkspace } from './host/workspace.js'
+
+// The guard lives in the `wt` core so host-side code can use it without importing
+// this module (which would cycle once the host remote mounts from here).
+export { assertNotSessionWorktree }
 
 export const name = 'dsh-worktrunk'
 export const inject = ['tools', 'commands', 'subprocess']
@@ -82,13 +86,6 @@ async function findBranch(ctx: WtContext, config: ResolvedConfig, cwd: string, b
 
 /** Append to merge failures: how to back a half-finished merge out. */
 const MERGE_RECOVERY_HINT = 'If a merge was left in progress, resolve the conflicts and run `git merge --continue`, or run `git merge --abort` in the affected worktree to back out.'
-
-/** Refuse an operation that would delete the worktree this session runs inside. */
-export function assertNotSessionWorktree(entry: WtEntry | undefined, cwd: string, action: string): void {
-	if (entry !== undefined && isWithin(entry.path, cwd)) {
-		throw new WtError('SESSION_WORKTREE', `Refusing to ${action} the worktree at ${entry.path}: this session is running inside it. Start a session elsewhere first.`)
-	}
-}
 
 /** Register the four model-facing worktrunk tools. */
 function registerTools(ctx: Context, config: ResolvedConfig): void {

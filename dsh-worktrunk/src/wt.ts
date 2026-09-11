@@ -207,6 +207,13 @@ export function isWithin(base: string, candidate: string): boolean {
 	return candidate === base || candidate.startsWith(base.endsWith('/') ? base : `${base}/`)
 }
 
+/** Refuse an operation that would delete the worktree this session runs inside. */
+export function assertNotSessionWorktree(entry: WtEntry | undefined, cwd: string, action: string): void {
+	if (entry !== undefined && isWithin(entry.path, cwd)) {
+		throw new WtError('SESSION_WORKTREE', `Refusing to ${action} the worktree at ${entry.path}: this session is running inside it. Start a session elsewhere first.`)
+	}
+}
+
 /** argv for creating a branch + worktree (hooks run unless `hooks: false`). */
 export function createArgs(bin: string, options: { branch: string, base?: string, hooks?: boolean }): string[] {
 	return [
