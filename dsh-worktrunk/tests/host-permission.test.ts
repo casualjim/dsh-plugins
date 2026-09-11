@@ -66,4 +66,17 @@ describe('worktree full access decision', () => {
     await expect(ensureWorktreeFullAccess(port, 's1')).resolves.toEqual({ status: 'unavailable' })
     expect(writes).toBe(0)
   })
+
+  it('reports already-full-access from the verified current preset even when the event log cannot be read', async () => {
+    let writes = 0
+    const port = {
+      sessions: { get: () => ({ id: 's1', snapshotEvents: () => { throw new Error('event log unreadable') } }) },
+      permissionPresets: {
+        ...presetService({ current: () => WORKTREE_FULL_ACCESS_PRESET }),
+        set: () => { writes += 1; throw new Error('must not write') },
+      },
+    }
+    await expect(ensureWorktreeFullAccess(port, 's1')).resolves.toEqual({ status: 'already-full-access', preset: WORKTREE_FULL_ACCESS_PRESET })
+    expect(writes).toBe(0)
+  })
 })

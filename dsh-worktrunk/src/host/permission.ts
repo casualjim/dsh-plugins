@@ -91,15 +91,17 @@ export async function ensureWorktreeFullAccess(
 	}
 	if (session === undefined || session === null) return { status: 'unavailable' }
 
-	const events = eventsOf(session as PermissionSessionLike)
-	if (events === undefined) return { status: 'unavailable' }
 	let current: string | undefined
 	try {
 		current = presets.current(session)
 	} catch {
 		return { status: 'unavailable' }
 	}
+	// The verified current preset is authoritative and needs no history.
 	if (current === WORKTREE_FULL_ACCESS_PRESET) return { status: 'already-full-access', preset: WORKTREE_FULL_ACCESS_PRESET }
+
+	const events = eventsOf(session as PermissionSessionLike)
+	if (events === undefined) return { status: 'unavailable' }
 	if (hasFullThenRestriction(events)) return { status: 'user-restricted' }
 	try {
 		presets.set(session, WORKTREE_FULL_ACCESS_PRESET)
