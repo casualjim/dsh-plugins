@@ -264,3 +264,42 @@ export function copyIgnoredArgs(bin: string, options: { force?: boolean, require
 		...(options.requireInclude === true ? ['--require-include'] : []),
 	]
 }
+
+import type { HookSpec } from './contract.js'
+
+/** Shown when the `wt` binary cannot be started. */
+export const WORKTRUNK_INSTALL_HINT =
+	'worktrunk is not installed or not on PATH. Install it with `brew install worktrunk` or `cargo install worktrunk`, then restart DSH.'
+
+/** Normalize one `wt hook show --format=json` row. */
+export function normalizeHookSpec(item: Record<string, unknown>): HookSpec | null {
+	const name = typeof item.name === 'string' ? item.name : null
+	const type = typeof item.type === 'string' ? item.type : null
+	const template = typeof item.template === 'string' ? item.template : null
+	if (name === null || type === null || template === null) return null
+	return {
+		name,
+		type,
+		template,
+		source: item.source === 'user' ? 'user' : 'project',
+		needsApproval: item.needs_approval === true,
+	}
+}
+
+/**
+ * Read the hooks `wt` would run for this repository. `wt` owns hook discovery, so
+ * this is one native call rather than a TOML parse; a missing project config is `[]`.
+ */
+export async function hookSpecs(ctx: WtContext, bin: string, cwd: string, signal?: AbortSignal): Promise<HookSpec[]> {
+	const outcome = await runWtOk(ctx, [bin, 'hook', 'show', '--format=json'], cwd, signal)
+	let parsed: unknown
+	try {
+		parsed = JSON.parse(outcome.stdout)
+	} catch (error) {
+		throw new WtError('WT_BAD_JSON', `\`wt hook show\` returned invalid JSON: ${(error as Error).message}`)
+	}
+	if (!Array.isArray(parsed)) return []
+	return parsed
+		.map(item => normalizeHookSpec(item as Record<string, unknown>))
+		.filter((spec): spec is HookSpec => spec !== null)
+}

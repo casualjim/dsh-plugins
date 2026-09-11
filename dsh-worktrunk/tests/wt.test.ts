@@ -261,3 +261,31 @@ describe('schema-2 facts', () => {
     expect(feature.upstream).toBeNull()
   })
 })
+
+import { hookSpecs, normalizeHookSpec } from '../src/wt.js'
+
+const HOOKS_JSON = JSON.stringify([
+  { name: 'install', needs_approval: true, source: 'project', template: 'mise install', type: 'pre-start' },
+  { name: 'copy', needs_approval: false, source: 'user', template: 'wt step copy-ignored', type: 'post-start' },
+  { name: 42, type: 'pre-start' },
+])
+
+describe('hook specs', () => {
+  it('normalizes a hook record and rejects an unusable one', () => {
+    expect(normalizeHookSpec({ name: 'install', needs_approval: true, source: 'project', template: 'mise install', type: 'pre-start' }))
+      .toEqual({ name: 'install', needsApproval: true, source: 'project', template: 'mise install', type: 'pre-start' })
+    expect(normalizeHookSpec({ name: 42, type: 'pre-start' })).toBeNull()
+  })
+
+  it('reads hooks through `wt hook show --format=json` and drops unparsable rows', async () => {
+    const subprocess = fakeSubprocess([{ stdout: HOOKS_JSON }])
+    const hooks = await hookSpecs({ subprocess } as never, 'wt', '/repo')
+    expect(hooks).toHaveLength(2)
+    expect(hooks[1]).toEqual({ name: 'copy', needsApproval: false, source: 'user', template: 'wt step copy-ignored', type: 'post-start' })
+  })
+
+  it('treats an empty configuration as no hooks', async () => {
+    const subprocess = fakeSubprocess([{ stdout: '[]' }])
+    await expect(hookSpecs({ subprocess } as never, 'wt', '/repo')).resolves.toEqual([])
+  })
+})
