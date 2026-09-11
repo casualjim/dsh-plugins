@@ -4,10 +4,24 @@
  * writes plugin state, and nothing here calls git.
  */
 import type { Context } from '@deepseek-ai/cordis'
-import { hookSpecs, listWorktreesFull, WtError, type WtContext, type WtEntry } from '../wt.js'
+import {
+	assertNotSessionWorktree,
+	copyIgnoredArgs,
+	createArgs,
+	hookSpecs,
+	listWorktrees,
+	listWorktreesFull,
+	mergeArgs,
+	removeArgs,
+	runWtOk,
+	WtError,
+	type WtContext,
+	type WtEntry,
+} from '../wt.js'
 import type { HookSpec, PanelSnapshot, RepoFacts, WorktreeRow, WorktreeSessionRef } from '../contract.js'
+import { ensureWorktreeFullAccess, type PermissionPresetService } from './permission.js'
 import { readSessionHeaders, sessionsForWorktree, type SessionSources } from './sessions.js'
-import { registryOf, resolveWorkspacePath, type WorkspaceRegistry } from './workspace.js'
+import { registerWorkspace, registryOf, resolveWorkspacePath, unregisterWorkspace, type WorkspaceRegistry } from './workspace.js'
 
 /** Cordis context plus the subprocess service `wt` runs through. */
 export interface WorktrunkServiceContext extends WtContext {
@@ -89,6 +103,13 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 		return { repo: full.repo, items }
 	}
 
+	async function findEntry(root: string, branch: string, signal?: AbortSignal): Promise<WtEntry> {
+		const entries = await listWorktrees(ctx, config.bin, root, signal)
+		const entry = entries.find(candidate => candidate.branch === branch)
+		if (entry === undefined) throw new WtError('NOT_FOUND', `no worktree for branch ${JSON.stringify(branch)} — check \`worktrunk_list\`.`)
+		return entry
+	}
+
 	return {
 		async readPanel(input: { workspaceId: string }, signal?: AbortSignal) {
 			const root = await workspacePath(ctx, input.workspaceId)
@@ -105,6 +126,53 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 		async previewHooks(input: { workspaceId: string }, signal?: AbortSignal) {
 			return hookSpecs(ctx, config.bin, await workspacePath(ctx, input.workspaceId), signal)
 		},
-		// Mutation methods are added in Task 8.
-	} as unknown as WorktrunkService
+		async createWorktree(input, signal) {
+			const root = await workspacePath(ctx, input.workspaceId)
+			await runWtOk(ctx, createArgs(config.bin, { branch: input.branch, base: input.base, hooks: input.skipHooks === true ? false : undefined }), root, signal)
+			const entry = await findEntry(root, input.branch, signal)
+			const registrationWarning = await registerWorkspace(ctx as unknown as Context, entry.path, input.branch, config.labelPrefix)
+			return {
+				path: entry.path,
+				branch: input.branch,
+				hooksRan: input.skipHooks !== true,
+				...(registrationWarning === undefined ? {} : { registrationWarning }),
+			}
+		},
+		async removeWorktree(input, signal) {
+			const root = await workspacePath(ctx, input.workspaceId)
+			const entry = await findEntry(root, input.branch, signal)
+			// No supplied session cwd means "not running inside one": the guard is a no-op then.
+			if (input.currentCwd !== undefined) assertNotSessionWorktree(entry, input.currentCwd, 'remove')
+			await runWtOk(ctx, removeArgs(config.bin, { branch: input.branch, force: input.force, forceDeleteBranch: input.forceDeleteBranch, keepBranch: input.keepBranch }), root, signal)
+			await unregisterWorkspace(ctx as unknown as Context, entry.path)
+			return { removed: true as const }
+		},
+		async mergeWorktree(input, signal) {
+			const root = await workspacePath(ctx, input.workspaceId)
+			const entry = await findEntry(root, input.branch, signal)
+			if (input.keepWorktree !== true && input.currentCwd !== undefined) {
+				assertNotSessionWorktree(entry, input.currentCwd, 'merge (it removes the worktree)')
+			}
+			await runWtOk(ctx, mergeArgs(config.bin, { target: input.target, keepCommit: input.keepCommit, keepWorktree: input.keepWorktree }), entry.path, signal)
+			if (input.keepWorktree !== true) await unregisterWorkspace(ctx as unknown as Context, entry.path)
+			return { merged: true as const }
+		},
+		async copyIgnored(input, signal) {
+			const cwd = input.path ?? (await workspacePath(ctx, input.workspaceId))
+			await runWtOk(ctx, copyIgnoredArgs(config.bin, { force: input.force, requireInclude: input.requireInclude }), cwd, signal)
+			return { ok: true as const }
+		},
+		async openWorktree(input) {
+			const warning = await registerWorkspace(ctx as unknown as Context, input.path, input.branch, config.labelPrefix)
+			if (warning !== undefined) return { workspaceId: undefined }
+			const registered = await (registryOf(ctx as unknown as Context)?.resolveByPath(input.path) ?? Promise.resolve(undefined))
+			return { workspaceId: registered?.id }
+		},
+		async ensureWorktreePermission(input) {
+			return ensureWorktreeFullAccess({
+				sessions: { get: sessionId => (ctx.get('sessions') as { get(id: string): unknown } | undefined)?.get(sessionId) },
+				permissionPresets: ctx.get('permissionPresets') as PermissionPresetService | undefined,
+			}, input.sessionId)
+		},
+	}
 }
