@@ -37,7 +37,7 @@ function fakeCtx(script: Array<{ stdout?: string, exitCode?: number }>, services
 
 describe('worktrunk service reads', () => {
   it('reads repo facts, rows, hooks, and cwd-matched sessions', async () => {
-    const { ctx, calls } = fakeCtx([{ stdout: LIST }, { stdout: '[]' }, { stdout: HOOKS }], {
+    const { ctx, calls } = fakeCtx([{ stdout: LIST }, { stdout: HOOKS }], {
       workspaceRegistry: {
         get: (id: string) => (id === 'w1' ? { id: 'w1', path: '/repo' } : undefined),
         list: () => [{ id: 'w1', path: '/repo' }],
@@ -48,7 +48,7 @@ describe('worktrunk service reads', () => {
     const service = createWorktrunkService(ctx as never, { bin: 'wt', labelPrefix: '[wt]' })
     const panel = await service.readPanel({ workspaceId: 'w1' })
 
-    expect(calls.map(call => call.argv.join(' '))).toEqual(['wt list --format=json', 'wt list --format=json', 'wt hook show --format=json'])
+    expect(calls.map(call => call.argv.join(' '))).toEqual(['wt list --format=json', 'wt hook show --format=json'])
     expect(panel.repo).toEqual({ root: '/repo', defaultBranch: 'main', forge: 'https://github.com/acme/repo' })
     expect(panel.items).toHaveLength(2)
     expect(panel.items[0]?.registered).toBe(true)
@@ -58,7 +58,7 @@ describe('worktrunk service reads', () => {
   })
 
   it('degrades to no hooks instead of failing the panel read', async () => {
-    const { ctx } = fakeCtx([{ stdout: LIST }, { stdout: LIST }, { exitCode: 1 }], { workspaceRegistry: { list: () => [{ id: 'w1', path: '/repo' }] } })
+    const { ctx } = fakeCtx([{ stdout: LIST }, { exitCode: 1 }], { workspaceRegistry: { list: () => [{ id: 'w1', path: '/repo' }] } })
     const service = createWorktrunkService(ctx as never, { bin: 'wt', labelPrefix: '[wt]' })
     await expect(service.readPanel({ workspaceId: 'w1' })).resolves.toMatchObject({ hooks: [] })
   })

@@ -82,21 +82,10 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 		for (const entry of full.entries) {
 			items.push(rowOf(entry, sessionsForWorktree(refs, entry.path), await isRegistered(registry, entry.path)))
 		}
-		// One panel read lists the repository twice (the read contract in
-		// tests/host-service-read.test.ts pins that): the workspace path is the
-		// repository root only when the panel was opened there, so the repo facts
-		// come from a listing run in the main worktree, falling back to the
-		// workspace listing for whatever that one omits.
-		const main = full.entries.find(entry => entry.isMain)
-		const atMain = main === undefined ? undefined : await listWorktreesFull(ctx, config.bin, main.path, signal)
-		return {
-			repo: {
-				root: atMain?.repo.root ?? full.repo.root,
-				defaultBranch: atMain?.repo.defaultBranch ?? full.repo.defaultBranch,
-				forge: atMain?.repo.forge ?? full.repo.forge,
-			},
-			items,
-		}
+		// One panel read = one `wt list`: that listing reports repo facts (root =
+		// the workspace path it ran in) alongside every worktree of the repo, so a
+		// second listing in the main worktree would only repeat them.
+		return { repo: full.repo, items }
 	}
 
 	return {
