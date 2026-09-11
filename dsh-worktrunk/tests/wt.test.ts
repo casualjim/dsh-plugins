@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apply, assertNotSessionWorktree, name as pluginName, parseCommand } from '../src/index.js'
+import { apply, assertNotSessionWorktree, name as pluginName, parseCommand, WorktrunkRemoteService } from '../src/index.js'
 import {
   copyIgnoredArgs,
   createArgs,
@@ -203,17 +203,20 @@ describe('plugin mounting', () => {
     const tools: unknown[] = []
     const commands: unknown[] = []
     const hooks: Array<[string]> = []
+    const plugins: Array<[unknown, unknown]> = []
     const ctx = {
       subprocess: fakeSubprocess([]),
       tools: { register: (t: unknown) => { tools.push(t) } },
       commands: { register: (c: unknown) => { commands.push(c) } },
       on: (event: string) => { hooks.push([event]) },
       get: () => undefined,
+      plugin: (plugin: unknown, config: unknown) => { plugins.push([plugin, config]) },
     }
     apply(ctx as never)
     expect(tools).toHaveLength(5)
     expect(commands).toHaveLength(1)
     expect(hooks).toEqual([['agent/pre-step']])
+    expect(plugins).toEqual([[WorktrunkRemoteService, { bin: 'wt', labelPrefix: '[wt]' }]])
     expect(pluginName).toBe('dsh-worktrunk')
   })
 })

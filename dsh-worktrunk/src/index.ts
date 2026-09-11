@@ -26,10 +26,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { CommandDefinition } from '@deepseek-ai/dsh-commands'
 import { assertNotSessionWorktree, copyIgnoredArgs, createArgs, isWithin, listWorktrees, mergeArgs, removeArgs, runWtOk, WtError, type WtContext, type WtEntry } from './wt.js'
 import { registerWorkspace, unregisterWorkspace } from './host/workspace.js'
+import { WorktrunkRemoteService } from './host/remote-service.js'
 
 // The guard lives in the `wt` core so host-side code can use it without importing
 // this module (which would cycle once the host remote mounts from here).
 export { assertNotSessionWorktree }
+
+export { WorktrunkRemoteService } from './host/remote-service.js'
 
 export const name = 'dsh-worktrunk'
 export const inject = ['tools', 'commands', 'subprocess']
@@ -446,4 +449,5 @@ export function apply(ctx: Context, config: Config = {}): void {
 	registerTools(ctx, resolved)
 	registerCommand(ctx, resolved)
 	registerContextNote(ctx, resolved)
+	ctx.plugin(WorktrunkRemoteService, { bin: resolved.bin, labelPrefix: resolved.labelPrefix })
 }

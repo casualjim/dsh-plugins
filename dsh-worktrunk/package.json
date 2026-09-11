@@ -12,28 +12,87 @@
     "README.md",
     "LICENSE"
   ],
+  "exports": {
+    ".": {
+      "types": "./lib/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "types": "./lib/client/entry.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./typert": {
+      "types": "./lib/typert.host.d.ts",
+      "default": "./lib/typert.host.js"
+    },
+    "./remote": {
+      "types": "./lib/typert.remote-client.d.ts",
+      "default": "./lib/typert.remote-client.js"
+    },
+    "./package.json": "./package.json"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-store",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-ui-slots",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-api-session-controller",
+        "@deepseek-ai/dsh-client-connection"
+      ],
+      "platform": "web"
     }
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node scripts/generate-typert.mjs && node scripts/build-client.mjs",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.test.json"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-api-session-controller": "*",
+    "@deepseek-ai/dsh-client-connection": "*",
+    "@deepseek-ai/dsh-client-locale": "*",
+    "@deepseek-ai/dsh-client-store": "*",
+    "@deepseek-ai/dsh-client-ui-layout": "*",
+    "@deepseek-ai/dsh-client-ui-primitives": "*",
+    "@deepseek-ai/dsh-client-ui-sidebar": "*",
+    "@deepseek-ai/dsh-client-ui-slots": "*",
     "@deepseek-ai/dsh-commands": "*",
     "@deepseek-ai/dsh-llm": "*",
-    "@deepseek-ai/dsh-tools": "*"
+    "@deepseek-ai/dsh-session": "*",
+    "@deepseek-ai/dsh-tools": "*",
+    "@deepseek-ai/dsh-typert-generator": "*",
+    "@deepseek-ai/dsh-typert-protocol": "*"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-api-session-controller": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-connection": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-locale": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-store": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-client-ui-slots": "0.1.5-rc.1",
     "@deepseek-ai/dsh-commands": "^0.0.1-rc.5",
     "@deepseek-ai/dsh-llm": "^0.0.1-rc.5",
-    "@deepseek-ai/dsh-tools": "^0.0.1-rc.5",
+    "@deepseek-ai/dsh-session": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-typert-generator": "0.1.5-rc.1",
+    "@deepseek-ai/dsh-typert-protocol": "0.1.5-rc.1",
     "@types/node": "^22.20.2",
+    "@types/react": "~19.3.0",
+    "@types/react-dom": "~19.3.0",
+    "esbuild": "^0.28.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "typescript": "^7.0.2",
     "vitest": "^5.0.0"
   }
