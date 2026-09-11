@@ -1,3 +1,29 @@
+# cordis.patch.yml — dsh-worktrunk bundle patch.
+#
+# The permission row REPLACES the whole permission config, so the upstream
+# presets are copied verbatim here and one is added. A test asserts all four
+# survive, so an upstream preset added later fails loudly instead of vanishing.
+- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      worktree-full-access:
+        sandbox: danger-full-access
+        approval: ask
+        name: Worktree Full Access
+        description: Full file access for linked Git metadata while keeping approval prompts enabled.
+
 - insert:
     - id: dsh-worktrunk
       name: dsh-worktrunk
+      config:
+        bin: wt
+        labelPrefix: '[wt]'
