@@ -278,14 +278,17 @@ describe('hook specs', () => {
   })
 
   it('reads hooks through `wt hook show --format=json` and drops unparsable rows', async () => {
-    const subprocess = fakeSubprocess([{ stdout: HOOKS_JSON }])
-    const hooks = await hookSpecs({ subprocess } as never, 'wt', '/repo')
+    const sub = fakeSubprocess([{ stdout: HOOKS_JSON }])
+    const hooks = await hookSpecs({ subprocess: sub } as never, 'wt', '/repo')
     expect(hooks).toHaveLength(2)
     expect(hooks[1]).toEqual({ name: 'copy', needsApproval: false, source: 'user', template: 'wt step copy-ignored', type: 'post-start' })
+    expect(sub.calls[0]).toEqual({ argv: ['wt', 'hook', 'show', '--format=json'], cwd: '/repo' })
+    expect(sub.calls).toHaveLength(1)
   })
 
   it('treats an empty configuration as no hooks', async () => {
-    const subprocess = fakeSubprocess([{ stdout: '[]' }])
-    await expect(hookSpecs({ subprocess } as never, 'wt', '/repo')).resolves.toEqual([])
+    const sub = fakeSubprocess([{ stdout: '[]' }])
+    await expect(hookSpecs({ subprocess: sub } as never, 'wt', '/repo')).resolves.toEqual([])
+    expect(sub.calls[0]).toEqual({ argv: ['wt', 'hook', 'show', '--format=json'], cwd: '/repo' })
   })
 })
