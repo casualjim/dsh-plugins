@@ -40,12 +40,13 @@ export interface WorktrunkPermissionPort {
 	readonly permissionPresets?: PermissionPresetService
 }
 
-function eventsOf(session: PermissionSessionLike): readonly PermissionEventLike[] {
+/** `undefined` means the history could not be read: a failed read is not "no restriction". */
+function eventsOf(session: PermissionSessionLike): readonly PermissionEventLike[] | undefined {
 	if (Array.isArray(session.events)) return session.events
 	try {
 		return session.snapshotEvents?.() ?? []
 	} catch {
-		return []
+		return undefined
 	}
 }
 
@@ -91,6 +92,7 @@ export async function ensureWorktreeFullAccess(
 	if (session === undefined || session === null) return { status: 'unavailable' }
 
 	const events = eventsOf(session as PermissionSessionLike)
+	if (events === undefined) return { status: 'unavailable' }
 	let current: string | undefined
 	try {
 		current = presets.current(session)

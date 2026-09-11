@@ -53,4 +53,17 @@ describe('worktree full access decision', () => {
     const port = { sessions: { get: () => undefined }, permissionPresets: { ...presetService(), set: () => undefined } }
     await expect(ensureWorktreeFullAccess(port, 'gone')).resolves.toEqual({ status: 'unavailable' })
   })
+
+  it('reports unavailable and never writes when the session event log cannot be read', async () => {
+    let writes = 0
+    const port = {
+      sessions: { get: () => ({ id: 's1', snapshotEvents: () => { throw new Error('event log unreadable') } }) },
+      permissionPresets: {
+        ...presetService({ current: () => 'read-only' }),
+        set: () => { writes += 1; throw new Error('must not write') },
+      },
+    }
+    await expect(ensureWorktreeFullAccess(port, 's1')).resolves.toEqual({ status: 'unavailable' })
+    expect(writes).toBe(0)
+  })
 })
