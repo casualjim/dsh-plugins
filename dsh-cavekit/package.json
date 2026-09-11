@@ -31,13 +31,13 @@
     "@deepseek-ai/dsh-skill": "*"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-agent": "^0.0.1-rc.1",
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-agent": "^0.1.0-rc.6",
     "@deepseek-ai/dsh-commands": "^0.0.1-rc.1",
     "@deepseek-ai/dsh-llm": "^0.0.1-rc.1",
     "@deepseek-ai/dsh-skill": "^0.0.1-rc.1",
-    "@types/node": "^22.19.19",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.8"
+    "@types/node": "^22.20.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }
