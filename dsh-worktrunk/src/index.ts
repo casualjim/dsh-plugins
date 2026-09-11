@@ -25,6 +25,7 @@ import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { Context } from '@deepseek-ai/cordis'
 import type { CommandDefinition } from '@deepseek-ai/dsh-commands'
 import { copyIgnoredArgs, createArgs, isWithin, listWorktrees, mergeArgs, removeArgs, runWtOk, WtError, type WtContext, type WtEntry } from './wt.js'
+import { registerWorkspace, unregisterWorkspace } from './host/workspace.js'
 
 export const name = 'dsh-worktrunk'
 export const inject = ['tools', 'commands', 'subprocess']
@@ -46,17 +47,6 @@ interface ResolvedConfig {
 function sessionCwd(agent: unknown): string {
 	const header = (agent as { session?: { header?: { cwd?: string } } } | undefined)?.session?.header
 	return header?.cwd ?? process.cwd()
-}
-
-/** The workspace-registry service, when the profile provides one. */
-interface WorkspaceRegistry {
-	create(path: string, label: string): Promise<unknown>
-	resolveByPath(path: string): Promise<{ id: string } | undefined>
-	delete(id: string): Promise<unknown>
-}
-
-function registry(ctx: Context): WorkspaceRegistry | undefined {
-	return (ctx as unknown as { get(service: string): unknown }).get('workspaceRegistry') as WorkspaceRegistry | undefined
 }
 
 /** One list row as rendered — WtEntry satisfies this; tool output is slimmer. */
@@ -100,34 +90,6 @@ export function assertNotSessionWorktree(entry: WtEntry | undefined, cwd: string
 	}
 }
 
-/**
- * Register (or refresh) the worktree's DSH workspace registration. Best
- * effort: a registry failure never fails the underlying wt operation.
- */
-async function registerWorkspace(ctx: Context, path: string, branch: string, config: ResolvedConfig): Promise<string | undefined> {
-	const reg = registry(ctx)
-	if (reg === undefined) return undefined
-	try {
-		const existing = await reg.resolveByPath(path)
-		if (existing === undefined) await reg.create(path, `${config.labelPrefix} ${branch}`)
-		return undefined
-	} catch (error) {
-		return `workspace registration skipped: ${(error as Error).message}`
-	}
-}
-
-/** Best-effort removal of a worktree's workspace registration. */
-async function unregisterWorkspace(ctx: Context, path: string): Promise<void> {
-	const reg = registry(ctx)
-	if (reg === undefined) return
-	try {
-		const workspace = await reg.resolveByPath(path)
-		if (workspace !== undefined) await reg.delete(workspace.id)
-	} catch {
-		// Stale registration is harmless; the worktree itself is already gone.
-	}
-}
-
 /** Register the four model-facing worktrunk tools. */
 function registerTools(ctx: Context, config: ResolvedConfig): void {
 	ctx.tools.register(defineTool({
@@ -164,7 +126,7 @@ function registerTools(ctx: Context, config: ResolvedConfig): void {
 			const entry = await findBranch(ctx as unknown as WtContext, config, cwd, args.branch, exec.signal)
 			const path = entry?.path
 			if (path === undefined) throw new WtError('NOT_FOUND', `worktree for ${JSON.stringify(args.branch)} not found after creation — check \`worktrunk_list\`.`)
-			const warning = await registerWorkspace(ctx, path, args.branch, config)
+			const warning = await registerWorkspace(ctx, path, args.branch, config.labelPrefix)
 			return { branch: args.branch, path, ...(warning !== undefined ? { registrationWarning: warning } : {}) }
 		},
 		presentCall: args => ({ card: 'generic', title: 'Create worktrunk worktree', kind: 'other', rawInput: args }),
@@ -363,7 +325,7 @@ async function executeWtCommand(ctx: Context, config: ResolvedConfig, invocation
 				await runWtOk(ctx as unknown as WtContext, createArgs(config.bin, { branch: parsed.branch!, base: parsed.base }), cwd, invocation.signal)
 				const entry = await findBranch(ctx as unknown as WtContext, config, cwd, parsed.branch!, invocation.signal)
 				const path = entry?.path ?? '(unknown — run /wt list)'
-				const warning = await registerWorkspace(ctx, path, parsed.branch!, config)
+				const warning = await registerWorkspace(ctx, path, parsed.branch!, config.labelPrefix)
 				return {
 					kind: 'success',
 					text: [
@@ -376,7 +338,7 @@ async function executeWtCommand(ctx: Context, config: ResolvedConfig, invocation
 			case 'open': {
 				const entry = await findBranch(ctx as unknown as WtContext, config, cwd, parsed.branch!, invocation.signal)
 				if (entry === undefined) return { kind: 'error', text: `no worktree for branch ${JSON.stringify(parsed.branch)} — create it with /wt create.` }
-				const warning = await registerWorkspace(ctx, entry.path, entry.branch, config)
+				const warning = await registerWorkspace(ctx, entry.path, entry.branch, config.labelPrefix)
 				return {
 					kind: 'success',
 					text: [
