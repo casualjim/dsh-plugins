@@ -20,6 +20,24 @@ export function removeDialogFacts(
 	return { lines, needsForce: dirty, canDeleteBranch: !row.detached }
 }
 
+/** Submit gate: a dirty worktree may only go once the force acknowledgement is ticked. */
+export function removeDialogBlocked(needsForce: boolean, force: boolean): boolean {
+	return needsForce && !force
+}
+
+/**
+ * Handler body, exported so the gate is drivable without a DOM: a blocked attempt
+ * never reaches `submit`.
+ */
+export function removeDialogSubmit(
+	facts: { needsForce: boolean },
+	choice: { force: boolean, forceDeleteBranch: boolean, keepBranch: boolean },
+	submit: (input: { force: boolean, forceDeleteBranch: boolean, keepBranch: boolean }) => void,
+): void {
+	if (removeDialogBlocked(facts.needsForce, choice.force)) return
+	submit(choice)
+}
+
 export interface RemoveDialogProps {
 	readonly row: WorktreeRow
 	readonly unmerged: boolean
@@ -37,15 +55,14 @@ export function RemoveDialog(props: RemoveDialogProps): ReactElement {
 	const [force, setForce] = useState(false)
 	const [forceDeleteBranch, setForceDeleteBranch] = useState(false)
 	const [keepBranch, setKeepBranch] = useState(false)
-	const blocked = facts.needsForce && !force
+	const blocked = removeDialogBlocked(facts.needsForce, force)
 
 	return (
 		<form
 			className="wt-dialog wt-dialog-remove"
 			onSubmit={(event) => {
 				event.preventDefault()
-				if (blocked) return
-				props.onSubmit({ force, forceDeleteBranch, keepBranch })
+				removeDialogSubmit(facts, { force, forceDeleteBranch, keepBranch }, props.onSubmit)
 			}}
 		>
 			<h3>{t('remove.title')}</h3>

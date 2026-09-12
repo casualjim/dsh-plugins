@@ -31,6 +31,7 @@ export const en = {
 	'create.title': 'Create worktree',
 	'create.description': 'A new branch and worktree in {repo}. Worktrees live outside the repository.',
 	'create.branch': 'New branch name',
+	'create.branchPlaceholder': 'feature/next',
 	'create.base': 'Base branch',
 	'create.baseCurrent': 'Current branch ({branch})',
 	'create.hooks': 'Setup steps from .config/wt.toml',

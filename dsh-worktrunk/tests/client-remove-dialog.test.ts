@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { RemoveDialog, removeDialogFacts } from '../src/client/panel/RemoveDialog.js'
+import { RemoveDialog, removeDialogBlocked, removeDialogFacts, removeDialogSubmit } from '../src/client/panel/RemoveDialog.js'
 import type { WorktreeRow } from '../src/contract.js'
 
 const t = (key: string, params?: Record<string, unknown>) => (params === undefined ? key : `${key}:${JSON.stringify(params)}`)
@@ -33,5 +33,26 @@ describe('remove dialog', () => {
     expect(html).toContain('feature/a')
     expect(html).toContain('remove.force')
     expect(html).toContain('remove.forceDeleteBranch')
+  })
+
+  it('pins the force gate: dirty + unticked disables submit and never calls onSubmit', () => {
+    const dirty = row({ changes: { ...clean, modified: true } })
+    const blockedHtml = renderToStaticMarkup(createElement(RemoveDialog, {
+      row: dirty, unmerged: true, t: t as never, onCancel: () => undefined, onSubmit: () => undefined,
+    }))
+    expect(blockedHtml).toContain('<button type="submit" disabled=""')
+    expect(removeDialogBlocked(removeDialogFacts(dirty, t as never).needsForce, false)).toBe(true)
+
+    const cleanHtml = renderToStaticMarkup(createElement(RemoveDialog, {
+      row: row(), unmerged: true, t: t as never, onCancel: () => undefined, onSubmit: () => undefined,
+    }))
+    expect(cleanHtml).toContain('<button type="submit">')
+    expect(removeDialogBlocked(removeDialogFacts(row(), t as never).needsForce, false)).toBe(false)
+
+    const calls: Array<{ force: boolean, forceDeleteBranch: boolean, keepBranch: boolean }> = []
+    removeDialogSubmit({ needsForce: true }, { force: false, forceDeleteBranch: false, keepBranch: false }, input => calls.push(input))
+    expect(calls).toEqual([])
+    removeDialogSubmit({ needsForce: true }, { force: true, forceDeleteBranch: false, keepBranch: true }, input => calls.push(input))
+    expect(calls).toEqual([{ force: true, forceDeleteBranch: false, keepBranch: true }])
   })
 })

@@ -6,15 +6,19 @@ import { useState, type ReactElement } from 'react'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
 import type { HookSpec, RepoFacts } from '../../contract.js'
 
-/** Hook preview summary: one line per hook, plus whether creation will block. */
+/** The hook types `wt switch --create` runs; `pre-merge`/`post-remove` hooks are not in play here. */
+const START_HOOK_TYPES: readonly string[] = ['pre-start', 'post-start']
+
+/** Hook preview summary: one line per start hook, plus whether creation will block. */
 export function createDialogSummary(
 	hooks: readonly HookSpec[],
 	t: Translate,
 ): { title: string, lines: readonly string[], blocking: boolean } {
+	const start = hooks.filter(hook => START_HOOK_TYPES.includes(hook.type))
 	return {
-		title: hooks.length === 0 ? t('create.noHooks') : t('create.hooks'),
-		lines: hooks.map(hook => `${hook.type} ${hook.name}: ${hook.template}`),
-		blocking: hooks.some(hook => hook.type === 'pre-start'),
+		title: start.length === 0 ? t('create.noHooks') : t('create.hooks'),
+		lines: start.map(hook => `${hook.type} ${hook.name}: ${hook.template}`),
+		blocking: start.some(hook => hook.type === 'pre-start'),
 	}
 }
 
@@ -53,7 +57,7 @@ export function CreateDialog(props: CreateDialogProps): ReactElement {
 			<p>{t('create.description', { repo: props.repo.forge ?? props.repo.root })}</p>
 			<label>
 				{t('create.branch')}
-				<input value={branch} onChange={event => setBranch(event.target.value)} placeholder="feature/next" autoFocus />
+				<input value={branch} onChange={event => setBranch(event.target.value)} placeholder={t('create.branchPlaceholder')} autoFocus />
 			</label>
 			<label>
 				{t('create.base')}
@@ -68,7 +72,7 @@ export function CreateDialog(props: CreateDialogProps): ReactElement {
 					<ul>{summary.lines.map(line => <li key={line}><code>{line}</code></li>)}</ul>
 				)}
 				{summary.blocking ? <p className="wt-hooks-blocking">{t('create.blocking')}</p> : null}
-				{hooks.length === 0 ? null : (
+				{summary.lines.length === 0 ? null : (
 					<label className="wt-hooks-skip">
 						<input type="checkbox" checked={skipHooks} onChange={event => setSkipHooks(event.target.checked)} />
 						{t('create.skipHooks')}
