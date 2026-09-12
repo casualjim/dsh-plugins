@@ -90,6 +90,19 @@ describe('panel store', () => {
     expect(state.rows.map(row => row.branch)).toEqual(['b'])
   })
 
+  it('notifies subscribers once when the selection changes and not when it is unchanged', () => {
+    const store = createPanelStore({} as never)
+    let calls = 0
+    const unsubscribe = store.subscribe(() => { calls += 1 })
+    store.setSelection('/wt/new')
+    expect(store.getSelection()).toBe('/wt/new')
+    expect(calls).toBe(1)
+    store.setSelection('/wt/new')
+    expect(store.getSelection()).toBe('/wt/new')
+    expect(calls).toBe(1)
+    unsubscribe()
+  })
+
   it('maps known failure codes to locale keys and falls back to the generic one', () => {
     expect(worktreeErrorMessageKey(new WorktrunkConnectionError({ code: 'WT_NOT_INSTALLED', message: '', retryable: false }))).toBe('error.wtNotInstalled')
     expect(worktreeErrorMessageKey(new WorktrunkConnectionError({ code: 'SESSION_WORKTREE', message: '', retryable: false }))).toBe('error.sessionWorktree')

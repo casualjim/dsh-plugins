@@ -95,7 +95,14 @@ export function createPanelStore(connection: WorktrunkConnection): PanelStore {
 				})
 			}
 		},
-		setSelection(worktreePath) { selection = worktreePath },
+		setSelection(worktreePath) {
+			// Selection is browser-local state the panel renders from this store, so a
+			// change has to reach subscribers or the row stays stale until some
+			// unrelated publish repaints it.
+			if (selection === worktreePath) return
+			selection = worktreePath
+			for (const listener of listeners) listener()
+		},
 		getSelection: () => selection,
 		dispose() { disposed = true; listeners.clear() },
 	}
