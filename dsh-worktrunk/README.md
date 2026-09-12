@@ -1,6 +1,6 @@
 # dsh-worktrunk
 
-[worktrunk](https://github.com/max-sixty/worktrunk) (`wt`) git worktree management for DeepSeek Harness — create, list, merge, and remove worktrees from the chat, with worktrunk's own setup-step machinery (`wt.toml` hooks) doing the heavy lifting: dependency installs (`mise install`), env generation, and copying gitignored files (secrets, local config) into fresh worktrees.
+[worktrunk](https://github.com/max-sixty/worktrunk) (`wt`) git worktree management for DeepSeek Harness — create, list, merge, and remove worktrees from the chat, with worktrunk's own setup-step machinery (`.config/wt.toml` hooks) doing the heavy lifting: dependency installs (`mise install`), env generation, and copying gitignored files (secrets, local config) into fresh worktrees.
 
 ## What it gives a profile
 
@@ -12,7 +12,7 @@
 | `wt remove <branch>` | agent tool `worktrunk_remove`, or `/wt remove <branch> [--force]` |
 | `wt step copy-ignored` | agent tool `worktrunk_copy_ignored`, or `/wt copy-ignored` |
 
-Lifecycle: `create` → work → `merge` → `remove`. Merge squashes & rebases into the target (default: repository default branch), fast-forwards it, and removes the worktree; `--keep-commit` preserves history (`--no-squash`), `--keep-worktree` keeps the checkout (`--no-remove`). Merge runs the repo's `wt.toml` pre-merge hooks; failures append recovery guidance (`git merge --continue` / `git merge --abort`).
+Lifecycle: `create` → work → `merge` → `remove`. Merge squashes & rebases into the target (default: repository default branch), fast-forwards it, and removes the worktree; `--keep-commit` preserves history (`--no-squash`), `--keep-worktree` keeps the checkout (`--no-remove`). Merge runs the repo's `.config/wt.toml` pre-merge hooks; failures append recovery guidance (`git merge --continue` / `git merge --abort`).
 
 - Worktrees are created through the harness subprocess service (never the agent bash tool), so they work regardless of the session's sandbox mode.
 - Created/opened worktrees are registered via `ctx.workspaceRegistry`, so a new session can start **inside** the worktree. Since worktrees live outside the repository (worktrunk default: sibling directories), opening the worktree as the session workspace is what places it inside the session's `workspace-write` boundary.
@@ -51,29 +51,64 @@ dsh plugin --profile web add <path-to-dsh-worktrunk>
         labelPrefix: '[wt]' # workspace label prefix (default: [wt])
 ```
 
-## Setup steps: wt.toml (per repository, committed)
+## Setup steps: `.config/wt.toml` (per repository, committed)
 
-The plugin intentionally ships **no** setup logic of its own — worktrunk's hook system is the mechanism. Example `wt.toml` at the repository root:
+The plugin ships **no** setup logic of its own — worktrunk's hook system is the mechanism.
+With `wt v0.77` the project config lives at **`<repo>/.config/wt.toml`**; a repository-root
+`wt.toml` is ignored. Location of worktrees is user config, scoped per repository:
 
 ```toml
-# Location of worktrees (default: siblings of the repo, e.g. ../repo.feat)
+# ~/.config/worktrunk/config.toml
+[projects."github.com/you/repo"]
 worktree-path = "{{ repo_path }}/../wt-{{ branch | sanitize }}"
+```
 
-# Runs once at worktree creation, blocking later steps: dependency install
+```toml
+# <repo>/.config/wt.toml — runs once at worktree creation, blocking later steps
 [pre-start]
 install = "mise install"
 
-# Runs in the background after creation: copy gitignored files (secrets,
-# local config) from the main checkout into the new worktree
+# runs in the background after creation: copy gitignored files into the worktree
 [post-start]
 copy = "wt step copy-ignored"
 ```
 
+The Worktrees panel reads these hooks with `wt hook show --format=json` and lists them in the
+Create and Merge dialogs before you confirm, with a "skip start hooks this once" toggle that
+maps to `--no-hooks`. Because the plugin runs `wt` with `--yes`, that dialog is the hook
+approval.
+
 `wt step copy-ignored` copies gitignored files between the main checkout and the worktree; existing destination files are skipped (safe to re-run), `--force` overwrites. Add `--require-include` to restrict copying to a Claude Code-style `.worktreeinclude` manifest.
 
-The usual flow: `mise install` in `pre-start` (must finish before anything depends on it), `copy-ignored` in `post-start` (non-blocking).
-
 Create from the currently checked-out branch instead of the default branch: `/wt create <branch> @` (worktrunk's `--base @`).
+
+## Worktrees panel
+
+The Sidebar panel list gains a **Worktrees** entry (a native main panel, not an overlay). It
+shows every worktree of the current workspace's repository from `wt list --format=json`:
+branch, path, HEAD, dirty/detached/branch-changed chips, ahead/behind, and the sessions whose
+working directory is that worktree. Row actions: New session here · Copy path · Sync gitignored
+files · Merge into… · Remove.
+
+- Nothing is stored: `wt` is the source of truth, so the panel always shows real Git state.
+- Removing is a single `wt remove` behind a confirmation that names the dirty state, the
+  detached HEAD, and whether deleting an unmerged branch needs an explicit choice.
+- Removing or merging the worktree the current session runs inside is refused.
+
+`tests/client-bundle.test.ts` loads the built `lib/client.js` headlessly and asserts both
+registrations; seeing the Worktrees entry in a running GUI after the profile restart in
+[Install](#install) step 3 is still a manual check.
+
+## Permissions in a worktree session
+
+A worktree's `.git` is a file pointing at the main repository's `.git/worktrees/<name>`, so git
+writes made from a session whose workspace is the worktree reach outside the session directory
+and are blocked under `workspace-write`. The bundle patch adds a **Worktree Full Access**
+preset (`danger-full-access` + `ask`). When the panel starts a session in a worktree, a
+confirmation dialog explains that mechanism; on acknowledgement the preset is applied to that
+session only, keeping approval prompts on and leaving network and process policy unchanged.
+An explicit restriction you chose yourself in DSH's native Access UI is preserved rather than
+re-applied, and if the preset is unavailable the panel says so instead of claiming full access.
 
 ## Sandbox note
 
