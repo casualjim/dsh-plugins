@@ -73,14 +73,18 @@ export function createPanelStore(connection: WorktrunkConnection): PanelStore {
 			if (disposed) return
 			const generation = (generations.get(workspaceId) ?? 0) + 1
 			generations.set(workspaceId, generation)
-			const firstRead = state.repo === undefined
-			publish({ workspaceId, loading: firstRead, error: undefined })
+			// A different workspace id is a first read: the previous workspace's rows
+			// must never render under the new id.
+			const firstRead = state.workspaceId !== workspaceId || state.repo === undefined
+			publish(firstRead
+				? { workspaceId, repo: undefined, rows: [], hooks: [], loading: true, error: undefined }
+				: { workspaceId, loading: false, error: undefined })
 			try {
 				const snapshot = await connection.readPanel({ workspaceId })
-				if (disposed || generations.get(workspaceId) !== generation) return
+				if (disposed || generations.get(workspaceId) !== generation || state.workspaceId !== workspaceId) return
 				publish({ workspaceId, repo: snapshot.repo, rows: snapshot.items, hooks: snapshot.hooks, loading: false, error: undefined })
 			} catch (error) {
-				if (disposed || generations.get(workspaceId) !== generation) return
+				if (disposed || generations.get(workspaceId) !== generation || state.workspaceId !== workspaceId) return
 				publish({
 					loading: false,
 					error: {

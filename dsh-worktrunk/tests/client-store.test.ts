@@ -55,6 +55,41 @@ describe('panel store', () => {
     expect(store.getSnapshot().rows.map(row => row.branch)).toEqual(['new'])
   })
 
+  it('drops the previous workspace rows while a different workspace loads', async () => {
+    const second = deferred<PanelSnapshot>()
+    const store = createPanelStore({
+      readPanel: ({ workspaceId }: { workspaceId: string }) => workspaceId === 'w1' ? Promise.resolve(snapshot('a')) : second.promise,
+    } as never)
+    await store.load('w1')
+    expect(store.getSnapshot().rows.map(row => row.branch)).toEqual(['a'])
+    const loading = store.load('w2')
+    const mid = store.getSnapshot()
+    expect(mid.workspaceId).toBe('w2')
+    expect(mid.loading).toBe(true)
+    expect(mid.rows).toEqual([])
+    expect(mid.repo).toBeUndefined()
+    second.resolve(snapshot('b'))
+    await loading
+    const done = store.getSnapshot()
+    expect(done.workspaceId).toBe('w2')
+    expect(done.rows.map(row => row.branch)).toEqual(['b'])
+    expect(done.loading).toBe(false)
+  })
+
+  it('drops a late response for a workspace the store no longer holds', async () => {
+    const first = deferred<PanelSnapshot>()
+    const store = createPanelStore({
+      readPanel: ({ workspaceId }: { workspaceId: string }) => workspaceId === 'w1' ? first.promise : Promise.resolve(snapshot('b')),
+    } as never)
+    const stale = store.load('w1')
+    await store.load('w2')
+    first.resolve(snapshot('a'))
+    await stale
+    const state = store.getSnapshot()
+    expect(state.workspaceId).toBe('w2')
+    expect(state.rows.map(row => row.branch)).toEqual(['b'])
+  })
+
   it('maps known failure codes to locale keys and falls back to the generic one', () => {
     expect(worktreeErrorMessageKey(new WorktrunkConnectionError({ code: 'WT_NOT_INSTALLED', message: '', retryable: false }))).toBe('error.wtNotInstalled')
     expect(worktreeErrorMessageKey(new WorktrunkConnectionError({ code: 'SESSION_WORKTREE', message: '', retryable: false }))).toBe('error.sessionWorktree')
