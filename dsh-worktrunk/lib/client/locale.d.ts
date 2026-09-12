@@ -1,0 +1,83 @@
+/** Locale namespace owned by this plugin. */
+export declare const WORKTRUNK_NS: 'worktrunk';
+/** English dictionary. Adding `zh` later is a data-only change. */
+export declare const en: {
+    'panel.label': string;
+    'panel.title': string;
+    'panel.refresh': string;
+    'panel.empty': string;
+    'panel.loading': string;
+    'panel.retry': string;
+    'panel.local': string;
+    'panel.detached': string;
+    'panel.branchMismatch': string;
+    'panel.duplicateBranch': string;
+    'panel.dirty': string;
+    'panel.ahead': string;
+    'panel.behind': string;
+    'panel.current': string;
+    'panel.copyPath': string;
+    'panel.open': string;
+    'panel.newSession': string;
+    'panel.syncIgnored': string;
+    'panel.merge': string;
+    'panel.remove': string;
+    'panel.create': string;
+    'panel.sessions': string;
+    'panel.noSessions': string;
+    'create.title': string;
+    'create.description': string;
+    'create.branch': string;
+    'create.branchPlaceholder': string;
+    'create.base': string;
+    'create.baseCurrent': string;
+    'create.hooks': string;
+    'create.noHooks': string;
+    'create.skipHooks': string;
+    'create.blocking': string;
+    'create.submit': string;
+    'create.cancel': string;
+    'create.working': string;
+    'remove.title': string;
+    'remove.description': string;
+    'remove.dirty': string;
+    'remove.force': string;
+    'remove.branchUnmerged': string;
+    'remove.forceDeleteBranch': string;
+    'remove.keepBranch': string;
+    'remove.detached': string;
+    'remove.submit': string;
+    'remove.cancel': string;
+    'merge.title': string;
+    'merge.description': string;
+    'merge.target': string;
+    'merge.keepCommit': string;
+    'merge.keepWorktree': string;
+    'merge.hooks': string;
+    'merge.submit': string;
+    'merge.cancel': string;
+    'permission.title': string;
+    'permission.description': string;
+    'permission.acknowledge': string;
+    'permission.enable': string;
+    'permission.cancel': string;
+    'permission.userRestricted': string;
+    'permission.unavailable': string;
+    'error.wtNotInstalled': string;
+    'error.notARepo': string;
+    'error.noInitialCommit': string;
+    'error.noLocalBranch': string;
+    'error.wtFailed': string;
+    'error.busy': string;
+    'error.sessionWorktree': string;
+    'error.notFound': string;
+    'error.hookFailed': string;
+    'error.presetUnavailable': string;
+    'error.unknown': string;
+};
+export type WorktrunkLocaleKey = keyof typeof en;
+declare module '@deepseek-ai/dsh-client-ui-slots' {
+    interface LocaleNamespaceMap {
+        worktrunk: WorktrunkLocaleKey;
+    }
+}
