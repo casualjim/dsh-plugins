@@ -90,17 +90,40 @@ describe('panel store', () => {
     expect(state.rows.map(row => row.branch)).toEqual(['b'])
   })
 
-  it('notifies subscribers once when the selection changes and not when it is unchanged', () => {
+  it('publishes the selection in a new snapshot and notifies subscribers once', () => {
     const store = createPanelStore({} as never)
     let calls = 0
     const unsubscribe = store.subscribe(() => { calls += 1 })
+    const before = store.getSnapshot()
     store.setSelection('/wt/new')
+    const after = store.getSnapshot()
+    // React keys on snapshot identity, so identity must change for a real change…
+    expect(after).not.toBe(before)
+    expect(after.selection).toBe('/wt/new')
     expect(store.getSelection()).toBe('/wt/new')
     expect(calls).toBe(1)
+    // …and must NOT change when the same value is set again.
     store.setSelection('/wt/new')
+    expect(store.getSnapshot()).toBe(after)
     expect(store.getSelection()).toBe('/wt/new')
     expect(calls).toBe(1)
     unsubscribe()
+  })
+
+  it('repaints a snapshot-gated consumer on selection change', () => {
+    // The shape `useSyncExternalStore` uses: re-read and keep the value only when
+    // the identity changed. A bare listener notification would leave this stale.
+    const store = createPanelStore({} as never)
+    let rendered = store.getSnapshot()
+    const stop = store.subscribe(() => {
+      const next = store.getSnapshot()
+      if (!Object.is(next, rendered)) rendered = next
+    })
+    store.setSelection('/wt/a')
+    expect(rendered.selection).toBe('/wt/a')
+    store.setSelection('/wt/a')
+    expect(rendered.selection).toBe('/wt/a')
+    stop()
   })
 
   it('maps known failure codes to locale keys and falls back to the generic one', () => {

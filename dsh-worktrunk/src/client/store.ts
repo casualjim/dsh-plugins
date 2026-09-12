@@ -15,6 +15,9 @@ export interface PanelState {
 	readonly hooks: PanelSnapshot['hooks']
 	readonly loading: boolean
 	readonly error: { code: string, retryable: boolean, message: string } | undefined
+	/** The selected worktree path, or `undefined`. Part of the snapshot on purpose:
+	 * React only repaints when the snapshot identity changes. */
+	readonly selection: string | undefined
 }
 
 /** Store surface: read, subscribe, and the two browser-local selections. */
@@ -27,7 +30,7 @@ export interface PanelStore {
 	dispose(): void
 }
 
-const EMPTY: PanelState = { workspaceId: undefined, repo: undefined, rows: [], hooks: [], loading: false, error: undefined }
+const EMPTY: PanelState = { workspaceId: undefined, repo: undefined, rows: [], hooks: [], loading: false, error: undefined, selection: undefined }
 
 /** Map a failure to the locale key the panel shows. */
 export function worktreeErrorMessageKey(error: unknown): WorktrunkLocaleKey {
@@ -53,7 +56,6 @@ export function worktreeErrorMessageKey(error: unknown): WorktrunkLocaleKey {
 /** Create the panel store over one connection. */
 export function createPanelStore(connection: WorktrunkConnection): PanelStore {
 	let state: PanelState = EMPTY
-	let selection: string | undefined
 	let disposed = false
 	const generations = new Map<string, number>()
 	const listeners = new Set<() => void>()
@@ -96,14 +98,13 @@ export function createPanelStore(connection: WorktrunkConnection): PanelStore {
 			}
 		},
 		setSelection(worktreePath) {
-			// Selection is browser-local state the panel renders from this store, so a
-			// change has to reach subscribers or the row stays stale until some
-			// unrelated publish repaints it.
-			if (selection === worktreePath) return
-			selection = worktreePath
-			for (const listener of listeners) listener()
+			// Selection rides in the snapshot: a plain listener notification is invisible
+			// to `useSyncExternalStore`, which repaints only when the snapshot identity
+			// changes. An unchanged value publishes nothing, so no pointless re-render.
+			if (state.selection === worktreePath) return
+			publish({ selection: worktreePath })
 		},
-		getSelection: () => selection,
+		getSelection: () => state.selection,
 		dispose() { disposed = true; listeners.clear() },
 	}
 }
