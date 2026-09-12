@@ -65,7 +65,6 @@ export const en = {
 	'permission.acknowledge': 'I understand and want to continue',
 	'permission.enable': 'Enable full access',
 	'permission.cancel': 'Cancel',
-	'permission.retained': 'The session was kept; confirm full access to retry. It was not opened.',
 	'permission.userRestricted': 'Your own permission restriction was preserved; this session was not elevated.',
 	'permission.unavailable': 'The permission preset is unavailable in this profile; the session was kept but full access is not confirmed.',
 	'error.wtNotInstalled': 'worktrunk is not installed. Install it with `brew install worktrunk` or `cargo install worktrunk`, then restart DSH.',

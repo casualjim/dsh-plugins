@@ -9,19 +9,33 @@ export interface PermissionDialogProps {
 	readonly cwd: string
 	readonly t: Translate
 	readonly onCancel: () => void
-	readonly onConfirm: () => void
+	readonly onConfirm: () => void | Promise<void>
 }
 
 /** Full-access acknowledgement dialog. */
 export function PermissionDialog(props: PermissionDialogProps): ReactElement {
 	const { t } = props
 	const [acknowledged, setAcknowledged] = useState(false)
+	const [pending, setPending] = useState(false)
+	const submit = (): void => {
+		if (!acknowledged || pending) return
+		setPending(true)
+		void (async () => {
+			try {
+				await props.onConfirm()
+			} catch {
+				// The entry turns a failed attempt into its own notice.
+			} finally {
+				setPending(false)
+			}
+		})()
+	}
 	return (
 		<form
 			className="wt-dialog wt-dialog-permission"
 			onSubmit={(event) => {
 				event.preventDefault()
-				if (acknowledged) props.onConfirm()
+				submit()
 			}}
 		>
 			<h3>{t('permission.title')}</h3>
@@ -32,7 +46,7 @@ export function PermissionDialog(props: PermissionDialogProps): ReactElement {
 			</label>
 			<footer>
 				<button type="button" onClick={props.onCancel}>{t('permission.cancel')}</button>
-				<button type="submit" disabled={!acknowledged}>{t('permission.enable')}</button>
+				<button type="submit" disabled={!acknowledged || pending}>{t('permission.enable')}</button>
 			</footer>
 		</form>
 	)

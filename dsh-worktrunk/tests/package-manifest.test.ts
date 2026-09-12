@@ -18,6 +18,8 @@ describe('package manifest', () => {
 			'@deepseek-ai/dsh-client-ui-slots',
 			'@deepseek-ai/dsh-client-ui-layout',
 			'@deepseek-ai/dsh-client-ui-sidebar',
+			'@deepseek-ai/dsh-client-ui-renderer',
+			'@deepseek-ai/dsh-api-workspace-controller',
 			'@deepseek-ai/dsh-client-connection',
 		]))
 		expect(manifest.dsh.bundle.patch).toBe('./cordis.patch.yml')

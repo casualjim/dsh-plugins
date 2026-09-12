@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
-import { apply, currentWorkspaceIdOf, describePermissionOutcome, inject, name } from '../src/client/entry.js'
+import { apply, createPermissionConfirmation, currentWorkspaceIdOf, describePermissionOutcome, inject, name } from '../src/client/entry.js'
 import { PermissionDialog } from '../src/client/panel/PermissionDialog.js'
 
 /**
@@ -22,8 +22,8 @@ function fakeClientCtx() {
     locale: { register: () => () => undefined, bind: () => (key: string) => key },
     sessions: {
       list: { getSnapshot: () => ({ ids: [], byId: {}, current: undefined }), subscribe: () => () => undefined },
-      create: async () => 's1',
-      open: () => undefined,
+      create: async (_opts?: { cwd?: string }): Promise<never> => 's1' as never,
+      open: (_id: never) => undefined,
     },
     workspaces: { list: { getSnapshot: () => ({ items: [] }), subscribe: () => () => undefined } },
     effect: (fn: () => (() => void)) => { effects.push(fn()) },
@@ -55,14 +55,44 @@ describe('client entry', () => {
   })
 
   it('decides what each permission outcome means for opening the session', () => {
-    expect(describePermissionOutcome('applied')).toEqual({ key: 'permission.applied', openSession: true, retryable: false })
-    expect(describePermissionOutcome('already-full-access')).toEqual({ key: 'permission.applied', openSession: true, retryable: false })
-    expect(describePermissionOutcome('user-restricted')).toEqual({ key: 'permission.userRestricted', openSession: true, retryable: false })
-    expect(describePermissionOutcome('unavailable')).toEqual({ key: 'permission.unavailable', openSession: false, retryable: true })
+    expect(describePermissionOutcome('applied')).toEqual({ key: 'permission.applied', openSession: true })
+    expect(describePermissionOutcome('already-full-access')).toEqual({ key: 'permission.applied', openSession: true })
+    expect(describePermissionOutcome('user-restricted')).toEqual({ key: 'permission.userRestricted', openSession: true })
+    expect(describePermissionOutcome('unavailable')).toEqual({ key: 'permission.unavailable', openSession: false })
   })
 
   it('keeps the outcome mapping exhaustive: an unknown status never claims full access', () => {
-    expect(describePermissionOutcome('something-else')).toEqual({ key: 'permission.unavailable', openSession: false, retryable: true })
+    expect(describePermissionOutcome('something-else')).toEqual({ key: 'permission.unavailable', openSession: false })
+  })
+
+  it('runs one session creation when the confirmation is submitted twice while the first is in flight', async () => {
+    const { ctx } = fakeClientCtx()
+    const created: string[] = []
+    const opened: string[] = []
+    const notices: Array<string | undefined> = []
+    let releasePermission: (() => void) | undefined
+    ctx.sessions.create = async (opts) => { created.push(String(opts?.cwd)); return 's1' as never }
+    ctx.sessions.open = id => { opened.push(String(id)) }
+
+    const confirm = createPermissionConfirmation()
+    const input = {
+      sessions: ctx.sessions,
+      // Deferred: the permission call stays in flight while the second click lands.
+      ensurePermission: () => new Promise<{ status: string }>(resolve => { releasePermission = () => resolve({ status: 'applied' }) }),
+      notice: (key: string | undefined) => { notices.push(key) },
+    }
+    const first = confirm(input, '/wt/a')
+    const second = confirm(input, '/wt/a')
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(created).toEqual(['/wt/a'])
+    expect(second).toBe(first)
+    releasePermission?.()
+    await Promise.all([first, second])
+
+    expect(created).toEqual(['/wt/a'])
+    expect(opened).toEqual(['s1'])
+    expect(notices).toEqual([undefined])
   })
 
   it('resolves the workspace owning the current session, else the first registered one', () => {

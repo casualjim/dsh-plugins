@@ -52,15 +52,48 @@ export function currentWorkspaceIdOf(rows: readonly WorktreeWorkspaceRow[] | und
 }
 
 /** What a permission outcome means for the session. */
-export function describePermissionOutcome(status: string): { key: string, openSession: boolean, retryable: boolean } {
+export function describePermissionOutcome(status: string): { key: string, openSession: boolean } {
 	switch (status) {
 		case 'applied':
 		case 'already-full-access':
-			return { key: 'permission.applied', openSession: true, retryable: false }
+			return { key: 'permission.applied', openSession: true }
 		case 'user-restricted':
-			return { key: 'permission.userRestricted', openSession: true, retryable: false }
+			return { key: 'permission.userRestricted', openSession: true }
 		default:
-			return { key: 'permission.unavailable', openSession: false, retryable: true }
+			return { key: 'permission.unavailable', openSession: false }
+	}
+}
+
+/** The client faces the confirmation flow drives. */
+export interface PermissionConfirmationInput {
+	readonly sessions: Pick<ISessions, 'create' | 'open'>
+	readonly ensurePermission: (input: { sessionId: string }) => Promise<{ status: string }>
+	/** The notice key, or `undefined` when the outcome claims full access. */
+	readonly notice: (key: string | undefined) => void
+}
+
+/**
+ * The confirmation flow, latched: a second trigger while an attempt is in
+ * flight joins that attempt instead of creating a second session.
+ */
+export function createPermissionConfirmation(): (input: PermissionConfirmationInput, cwd: string) => Promise<void> {
+	let inFlight: Promise<void> | undefined
+	return (input, cwd) => {
+		if (inFlight !== undefined) return inFlight
+		const attempt = (async () => {
+			try {
+				const sessionId = await input.sessions.create({ cwd })
+				const result = await input.ensurePermission({ sessionId })
+				const outcome = describePermissionOutcome(result.status)
+				input.notice(outcome.key === 'permission.applied' ? undefined : outcome.key)
+				if (outcome.openSession) input.sessions.open(sessionId)
+			} catch (error) {
+				input.notice(worktreeErrorMessageKey(error))
+			}
+		})()
+		inFlight = attempt
+		void attempt.then(() => { inFlight = undefined })
+		return attempt
 	}
 }
 
@@ -108,6 +141,9 @@ export function apply(ctx: ClientContext): void {
 	const store = createPanelStore(connection)
 	ctx.effect(() => () => store.dispose(), 'dsh-worktrunk: panel store disposal')
 
+	// One latch per plugin instance, so it survives the panel's re-renders.
+	const confirmation = createPermissionConfirmation()
+
 	const sessionList = (): ReturnType<typeof client.sessions.list.getSnapshot> => client.sessions.list.getSnapshot()
 	const currentWorkspaceId = (): string | undefined =>
 		currentWorkspaceIdOf(client.workspaces?.list?.getSnapshot().items, sessionList().current)
@@ -141,21 +177,12 @@ export function apply(ctx: ClientContext): void {
 				.catch(error => setErrorKey(worktreeErrorMessageKey(error)))
 		}
 
-		const confirmPermission = (cwd: string): void => {
-			void (async () => {
-				try {
-					const sessionId = await client.sessions.create({ cwd })
-					const result = await connection.ensureWorktreePermission({ sessionId })
-					const outcome = describePermissionOutcome(result.status)
-					setErrorKey(outcome.key === 'permission.applied' ? undefined : outcome.key)
-					if (outcome.openSession) client.sessions.open(sessionId)
-				} catch (error) {
-					setErrorKey(worktreeErrorMessageKey(error))
-				} finally {
-					setDialog({ kind: 'none' })
-				}
-			})()
-		}
+		const confirmPermission = (cwd: string): Promise<void> =>
+			confirmation({
+				sessions: client.sessions,
+				ensurePermission: input => connection.ensureWorktreePermission(input),
+				notice: setErrorKey,
+			}, cwd).finally(() => { setDialog({ kind: 'none' }) })
 
 		return createElement('div', { className: 'wt-panel-host' },
 			createElement(WorktreePanel, {
