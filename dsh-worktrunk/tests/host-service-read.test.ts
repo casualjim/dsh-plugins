@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createWorktrunkService } from '../src/host/service.js'
+import { createWorktrunkRemoteProjection } from '../src/host/remote.js'
+import { WORKTRUNK_INSTALL_HINT } from '../src/wt.js'
 
 const LIST = JSON.stringify({
   schema: 2,
@@ -13,12 +15,14 @@ const LIST = JSON.stringify({
 })
 const HOOKS = JSON.stringify([{ name: 'install', needs_approval: true, source: 'project', template: 'mise install', type: 'pre-start' }])
 
-function fakeCtx(script: Array<{ stdout?: string, exitCode?: number }>, services: Record<string, unknown> = {}) {
+function fakeCtx(script: Array<{ stdout?: string, exitCode?: number, spawnThrows?: string }>, services: Record<string, unknown> = {}) {
   const calls: Array<{ argv: string[], cwd: string }> = []
   const subprocess = {
     spawn(options: { argv: string[], cwd: string }) {
       calls.push({ argv: options.argv, cwd: options.cwd })
       const step = script.shift() ?? { exitCode: 0 }
+      // The runner catches a throwing spawn: that is the missing-binary case.
+      if (step.spawnThrows !== undefined) throw new Error(step.spawnThrows)
       const collect = (text: string) => ({ readFrom: () => ({ text }) })
       return {
         done: Promise.resolve({ exitCode: step.exitCode ?? 0, signal: null }),
@@ -82,5 +86,17 @@ describe('worktrunk service reads', () => {
     const { ctx } = fakeCtx([])
     const service = createWorktrunkService(ctx as never, { bin: 'wt', labelPrefix: '[wt]' })
     await expect(service.readPanel({ workspaceId: 'missing' })).rejects.toMatchObject({ code: 'NOT_FOUND' })
+  })
+
+  it('classifies a missing wt binary as the workspace-scoped WT_NOT_INSTALLED, not SPAWN_FAILED', async () => {
+    const missing = { spawnThrows: 'spawn wt ENOENT' }
+    const { ctx } = fakeCtx([missing, missing, missing], { workspaceRegistry: { list: () => [{ id: 'w1', path: '/repo' }] } })
+    const service = createWorktrunkService(ctx as never, { bin: 'wt', labelPrefix: '[wt]' })
+
+    await expect(service.readPanel({ workspaceId: 'w1' })).rejects.toMatchObject({ code: 'WT_NOT_INSTALLED', message: WORKTRUNK_INSTALL_HINT })
+    await expect(service.copyIgnored({ workspaceId: 'w1', path: '/wt/a' })).rejects.toMatchObject({ code: 'WT_NOT_INSTALLED' })
+    // The code is a domain failure, so it crosses the Remote boundary as a value.
+    await expect(createWorktrunkRemoteProjection(service).readPanel({ workspaceId: 'w1' }))
+      .resolves.toMatchObject({ ok: false, error: { code: 'WT_NOT_INSTALLED' } })
   })
 })

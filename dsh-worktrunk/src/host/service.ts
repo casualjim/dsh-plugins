@@ -9,11 +9,11 @@ import {
 	copyIgnoredArgs,
 	createArgs,
 	hookSpecs,
-	listWorktrees,
 	listWorktreesFull,
 	mergeArgs,
 	removeArgs,
 	runWtOk,
+	WORKTRUNK_INSTALL_HINT,
 	WtError,
 	type WtContext,
 	type WtEntry,
@@ -86,11 +86,32 @@ function sessionSources(ctx: WorktrunkServiceContext): SessionSources {
 	}
 }
 
+/**
+ * A missing `wt` binary is a workspace-scoped setup state, not an infrastructure
+ * fault: reclassify the runner's `SPAWN_FAILED` here, on the service path only.
+ * The agent tools keep that code and message untouched, and every other throw
+ * (any other `WtError` code, or a non-`WtError`) passes through as-is.
+ */
+async function wtInstalled<Value>(operation: () => Promise<Value>): Promise<Value> {
+	try {
+		return await operation()
+	} catch (error) {
+		if (error instanceof WtError && error.code === 'SPAWN_FAILED') throw new WtError('WT_NOT_INSTALLED', WORKTRUNK_INSTALL_HINT, { cause: error })
+		throw error
+	}
+}
+
 /** Build the panel-facing service over one Cordis context. */
 export function createWorktrunkService(ctx: WorktrunkServiceContext, config: WorktrunkServiceConfig): WorktrunkService {
+	// Every service shell-out goes through these three, so a missing binary is
+	// classified wherever `wt` is first needed — the first panel load included.
+	const wtOk = (argv: string[], cwd: string, signal?: AbortSignal) => wtInstalled(() => runWtOk(ctx, argv, cwd, signal))
+	const readFull = (root: string, signal?: AbortSignal) => wtInstalled(() => listWorktreesFull(ctx, config.bin, root, signal))
+	const readHooks = (root: string, signal?: AbortSignal) => wtInstalled(() => hookSpecs(ctx, config.bin, root, signal))
+
 	async function readRows(root: string, signal?: AbortSignal): Promise<{ repo: RepoFacts, items: WorktreeRow[] }> {
 		const [full, refs] = await Promise.all([
-			listWorktreesFull(ctx, config.bin, root, signal),
+			readFull(root, signal),
 			readSessionHeaders(sessionSources(ctx)),
 		])
 		const items: WorktreeRow[] = []
@@ -104,7 +125,7 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 	}
 
 	async function findEntry(root: string, branch: string, signal?: AbortSignal): Promise<WtEntry> {
-		const entries = await listWorktrees(ctx, config.bin, root, signal)
+		const entries = (await readFull(root, signal)).entries
 		const entry = entries.find(candidate => candidate.branch === branch)
 		if (entry === undefined) throw new WtError('NOT_FOUND', `no worktree for branch ${JSON.stringify(branch)} — check \`worktrunk_list\`.`)
 		return entry
@@ -116,7 +137,7 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 			const rows = await readRows(root, signal)
 			let hooks: readonly HookSpec[] = []
 			try {
-				hooks = await hookSpecs(ctx, config.bin, root, signal)
+				hooks = await readHooks(root, signal)
 			} catch {
 				// Hook discovery is presentation data: a failure shows no hooks, it
 				// never fails the panel read.
@@ -124,11 +145,11 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 			return { repo: rows.repo, items: rows.items, hooks }
 		},
 		async previewHooks(input: { workspaceId: string }, signal?: AbortSignal) {
-			return hookSpecs(ctx, config.bin, await workspacePath(ctx, input.workspaceId), signal)
+			return readHooks(await workspacePath(ctx, input.workspaceId), signal)
 		},
 		async createWorktree(input, signal) {
 			const root = await workspacePath(ctx, input.workspaceId)
-			await runWtOk(ctx, createArgs(config.bin, { branch: input.branch, base: input.base, hooks: input.skipHooks === true ? false : undefined }), root, signal)
+			await wtOk(createArgs(config.bin, { branch: input.branch, base: input.base, hooks: input.skipHooks === true ? false : undefined }), root, signal)
 			const entry = await findEntry(root, input.branch, signal)
 			const registrationWarning = await registerWorkspace(ctx as unknown as Context, entry.path, input.branch, config.labelPrefix)
 			return {
@@ -143,7 +164,7 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 			const entry = await findEntry(root, input.branch, signal)
 			// No supplied session cwd means "not running inside one": the guard is a no-op then.
 			if (input.currentCwd !== undefined) assertNotSessionWorktree(entry, input.currentCwd, 'remove')
-			await runWtOk(ctx, removeArgs(config.bin, { branch: input.branch, force: input.force, forceDeleteBranch: input.forceDeleteBranch, keepBranch: input.keepBranch }), root, signal)
+			await wtOk(removeArgs(config.bin, { branch: input.branch, force: input.force, forceDeleteBranch: input.forceDeleteBranch, keepBranch: input.keepBranch }), root, signal)
 			await unregisterWorkspace(ctx as unknown as Context, entry.path)
 			return { removed: true as const }
 		},
@@ -153,13 +174,13 @@ export function createWorktrunkService(ctx: WorktrunkServiceContext, config: Wor
 			if (input.keepWorktree !== true && input.currentCwd !== undefined) {
 				assertNotSessionWorktree(entry, input.currentCwd, 'merge (it removes the worktree)')
 			}
-			await runWtOk(ctx, mergeArgs(config.bin, { target: input.target, keepCommit: input.keepCommit, keepWorktree: input.keepWorktree }), entry.path, signal)
+			await wtOk(mergeArgs(config.bin, { target: input.target, keepCommit: input.keepCommit, keepWorktree: input.keepWorktree }), entry.path, signal)
 			if (input.keepWorktree !== true) await unregisterWorkspace(ctx as unknown as Context, entry.path)
 			return { merged: true as const }
 		},
 		async copyIgnored(input, signal) {
 			const cwd = input.path ?? (await workspacePath(ctx, input.workspaceId))
-			await runWtOk(ctx, copyIgnoredArgs(config.bin, { force: input.force, requireInclude: input.requireInclude }), cwd, signal)
+			await wtOk(copyIgnoredArgs(config.bin, { force: input.force, requireInclude: input.requireInclude }), cwd, signal)
 			return { ok: true as const }
 		},
 		async openWorktree(input) {
