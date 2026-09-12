@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CallId, createMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, createMessage, createToolResultMessage, createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock, Message } from '@deepseek-ai/dsh-llm'
 import type { OpenAIMessage } from 'headroom-ai'
 import {
@@ -24,14 +24,14 @@ function userMessage(text: string): Message {
 function assistantToolCall(call: string, name = 'bash'): Message {
   return createMessage({
     role: 'assistant',
-    content: [{ type: 'tool-call', id: CallId(call), name, arguments: '{}' }],
+    content: [{ type: 'tool-call', id: ToolCallId(call), name, arguments: '{}' }],
     source: { kind: 'model', provider: 'test', model: 'test-model' },
   })
 }
 
 function toolResult(call: string, text: string): Message {
   return createToolResultMessage({
-    callId: CallId(call),
+    callId: ToolCallId(call),
     content: [{ type: 'text', text }],
     isError: false,
   })

@@ -11,6 +11,7 @@
 
 export type { CompressResult } from 'headroom-ai'
 import type { OpenAIMessage } from 'headroom-ai'
+import type { SessionSeq } from '@deepseek-ai/dsh-session'
 
 export type HeadroomMode = 'normal' | 'quiet' | 'silent'
 
@@ -121,7 +122,7 @@ export interface HeadroomStats {
 /** Result of one compression pass over a DSH session surface. */
 export interface HeadroomPassResult {
   /** Landed replacements: original seq → replacement seq. */
-  replacements: Array<{ originalSeq: number; replacementSeq: number; callId: string }>
+  replacements: Array<{ originalSeq: SessionSeq; replacementSeq: SessionSeq; callId: string }>
   appliedMessages: number
   tokensSaved: number
   charsRemoved: number

@@ -25,6 +25,7 @@ import type {
   Message,
   ToolResultMessage,
 } from '@deepseek-ai/dsh-llm'
+import { SessionSeq } from '@deepseek-ai/dsh-session'
 import type { Session, SessionEvent } from '@deepseek-ai/dsh-session'
 import type { PreStepDecision } from '@deepseek-ai/dsh-agent'
 // Type-only: merges the `agent/*` event map for the `agent/pre-step` listener.
@@ -45,7 +46,7 @@ import {
   stableHash,
 } from './bridge.js'
 import { isRemoteBlocked, resolveConfig } from './config.js'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import type {} from '@deepseek-ai/dsh-settings'
 import { HeadroomTransport } from './transport.js'
 import type {
   HeadroomConfig,
@@ -65,7 +66,7 @@ const MODES: readonly HeadroomMode[] = ['normal', 'quiet', 'silent']
 
 /** One snapshot entry: a surface node and its message. */
 interface SurfaceNode {
-  readonly seq: number
+  readonly seq: SessionSeq
   readonly event: SessionEvent<'tool/result'> | SessionEvent<'user/message'> | SessionEvent<'assistant/message'>
   readonly message: Message
 }
@@ -215,16 +216,21 @@ export class HeadroomCompressor extends Service {
   private installSettingsSection(entry: HeadroomConfig): void {
     const self = this
     let source: () => unknown = () => self.runtime
-    installSettingsSection(
-      this.ctx,
-      settingsNamespace('headroom'),
-      HeadroomCompressor.Config,
-      entry as never,
-      {
-        setSource: (current: () => unknown) => { source = current },
-        onChange: () => { self.applySettings(source() as ResolvedHeadroomConfig) },
-      },
-    )
+    // 0.1.5: installSection lives on SettingsProvider, which headless
+    // assemblies (and tests) may not provide — inject so registration
+    // happens whenever one is attached.
+    this.ctx.inject(['settings'], (ctx) => {
+      ctx.settings.installSection(
+        ctx,
+        'headroom',
+        HeadroomCompressor.Config,
+        entry as never,
+        {
+          setSource: (current: () => unknown) => { source = current },
+          onChange: () => { self.applySettings(source() as ResolvedHeadroomConfig) },
+        },
+      )
+    })
   }
 
   /** Re-resolve and live-apply a new configuration (settings write or attach). */
@@ -273,7 +279,7 @@ export class HeadroomCompressor extends Service {
   estimateSurfaceTokens(session: Session): number {
     let tokens = 0
     for (const seq of session.surface.nodes) {
-      const event = session.events[seq]
+      const event = session.eventAt(seq)
       if (event === undefined) continue
       if (event.type === 'tool/result') {
         tokens += this.ctx.tokenMeter.estimateMessage(event.data.message)
@@ -354,7 +360,7 @@ export class HeadroomCompressor extends Service {
           ...node.event.data,
           message,
         }, {
-          surfaceOp: { op: 'replace', start: node.seq, end: node.seq },
+          surfaceOp: { op: 'replace', startSeq: node.seq, endSeq: node.seq },
           sourceEventSeqs: [node.seq],
         })
         replacements.push({
@@ -446,7 +452,7 @@ export class HeadroomCompressor extends Service {
 function snapshotSurface(session: Session): SurfaceNode[] {
   const nodes: SurfaceNode[] = []
   for (const seq of session.surface.nodes) {
-    const event = session.events[seq]
+    const event = session.eventAt(seq)
     if (event === undefined) continue
     if (event.type === 'tool/result') {
       nodes.push({ seq, event, message: event.data.message })
@@ -562,7 +568,7 @@ async function handleRun(
   return {
     kind: 'success',
     text: `Compressed ${result.appliedMessages} tool result(s), ~${result.tokensSaved} tokens saved (${result.replacements.length} surface node(s) replaced).`,
-    sourceEventSeq: result.replacements[0]?.replacementSeq,
+    sourceEventSeq: result.replacements[0] === undefined ? undefined : SessionSeq(result.replacements[0].replacementSeq),
   }
 }
 

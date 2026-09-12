@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
+import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import Tools from '@deepseek-ai/dsh-tools'
 import { HeadroomCompressor, buildRetrieveTool } from '../src/index.js'
@@ -34,6 +35,7 @@ function boot(): { ctx: Context; service: HeadroomCompressor } {
   const ctx = new Context()
   void new SystemPrompt(ctx, {} as never)
   void new Tools(ctx)
+  void new SessionProjectionRegistry(ctx)
   void new TokenMeter(ctx)
   // Construction registers the retrieve tool through ctx.get('tools').
   const service = new HeadroomCompressor(ctx, { baseUrl: null })

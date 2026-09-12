@@ -3,12 +3,20 @@
  * defaults last. Ported from noheadroom's `config.ts` with DSH naming.
  */
 
-import { deepFreeze } from '@deepseek-ai/dsh-llm'
 import type {
   HeadroomConfig,
   HeadroomMode,
   ResolvedHeadroomConfig,
 } from './types.js'
+
+/** Recursively freeze a config object (deepFreeze left @deepseek-ai/dsh-llm in 0.1.5). */
+function deepFreeze<T>(value: T): T {
+  if (value !== null && typeof value === 'object') {
+    for (const key of Object.keys(value as object)) deepFreeze((value as Record<string, unknown>)[key])
+    Object.freeze(value)
+  }
+  return value
+}
 
 export const DEFAULTS: ResolvedHeadroomConfig = deepFreeze({
   enabled: true,

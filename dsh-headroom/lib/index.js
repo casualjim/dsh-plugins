@@ -19,9 +19,9 @@
 import { Service } from '@deepseek-ai/cordis';
 import z from '@deepseek-ai/schemastery';
 import { freezeMessage } from '@deepseek-ai/dsh-llm';
+import { SessionSeq } from '@deepseek-ai/dsh-session';
 import { applyCompressionResult, buildCompressionPayload, estimateTokens, generateCandidateFingerprint, generateFingerprint, SeenContentCache, stableHash, } from './bridge.js';
 import { isRemoteBlocked, resolveConfig } from './config.js';
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings';
 import { HeadroomTransport } from './transport.js';
 const MODES = ['normal', 'quiet', 'silent'];
 function emptyStats() {
@@ -155,9 +155,14 @@ export class HeadroomCompressor extends Service {
     installSettingsSection(entry) {
         const self = this;
         let source = () => self.runtime;
-        installSettingsSection(this.ctx, settingsNamespace('headroom'), HeadroomCompressor.Config, entry, {
-            setSource: (current) => { source = current; },
-            onChange: () => { self.applySettings(source()); },
+        // 0.1.5: installSection lives on SettingsProvider, which headless
+        // assemblies (and tests) may not provide — inject so registration
+        // happens whenever one is attached.
+        this.ctx.inject(['settings'], (ctx) => {
+            ctx.settings.installSection(ctx, 'headroom', HeadroomCompressor.Config, entry, {
+                setSource: (current) => { source = current; },
+                onChange: () => { self.applySettings(source()); },
+            });
         });
     }
     /** Re-resolve and live-apply a new configuration (settings write or attach). */
@@ -204,7 +209,7 @@ export class HeadroomCompressor extends Service {
     estimateSurfaceTokens(session) {
         let tokens = 0;
         for (const seq of session.surface.nodes) {
-            const event = session.events[seq];
+            const event = session.eventAt(seq);
             if (event === undefined)
                 continue;
             if (event.type === 'tool/result') {
@@ -287,7 +292,7 @@ export class HeadroomCompressor extends Service {
                     ...node.event.data,
                     message,
                 }, {
-                    surfaceOp: { op: 'replace', start: node.seq, end: node.seq },
+                    surfaceOp: { op: 'replace', startSeq: node.seq, endSeq: node.seq },
                     sourceEventSeqs: [node.seq],
                 });
                 replacements.push({
@@ -375,7 +380,7 @@ export class HeadroomCompressor extends Service {
 function snapshotSurface(session) {
     const nodes = [];
     for (const seq of session.surface.nodes) {
-        const event = session.events[seq];
+        const event = session.eventAt(seq);
         if (event === undefined)
             continue;
         if (event.type === 'tool/result') {
@@ -484,7 +489,7 @@ async function handleRun(service, invocation) {
     return {
         kind: 'success',
         text: `Compressed ${result.appliedMessages} tool result(s), ~${result.tokensSaved} tokens saved (${result.replacements.length} surface node(s) replaced).`,
-        sourceEventSeq: result.replacements[0]?.replacementSeq,
+        sourceEventSeq: result.replacements[0] === undefined ? undefined : SessionSeq(result.replacements[0].replacementSeq),
     };
 }
 function renderStatus(service) {

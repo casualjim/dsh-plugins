@@ -18,8 +18,6 @@ import { fileURLToPath } from 'node:url'
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 
 const EXTERNALS = [
-  '@deepseek-ai/dsh-client-runtime',
-  '@deepseek-ai/dsh-client-runtime/client',
   '@deepseek-ai/dsh-client-ui-settings',
   '@deepseek-ai/dsh-client-ui-settings/client',
   '@deepseek-ai/dsh-client-ui-slots',

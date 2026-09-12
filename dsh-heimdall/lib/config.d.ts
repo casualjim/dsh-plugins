@@ -70,7 +70,7 @@ export interface Config {
     /** Native-sandbox policy fragment; consumed by dsh-heimdall-sandbox. */
     sandbox?: SandboxOptions;
 }
-export declare const OPT_OUT_GUARD_IDS: readonly ["secret-guard", "command-policy-guard", "env-protect", "kubectl-secret-guard", "sops-secret-guard"];
+export declare const OPT_OUT_GUARD_IDS: readonly ['secret-guard', 'command-policy-guard', 'env-protect', 'kubectl-secret-guard', 'sops-secret-guard'];
 export interface LoadedConfig {
     config: Config;
     disabled: ReadonlySet<string>;

@@ -37,7 +37,7 @@ import { fileURLToPath } from 'node:url';
 import z from '@deepseek-ai/schemastery';
 import { SandboxProvider } from '@deepseek-ai/dsh-sandbox';
 import { loadSandboxSections, mergeSandboxOptions } from 'dsh-heimdall/config';
-import { buildPolicyDocument } from "./policy.js";
+import { buildPolicyDocument } from './policy.js';
 /** The stderr dialect a kernel denial produces under the platform's backend. */
 const DENIAL_SIGNATURES = {
     darwin: ['operation not permitted'],

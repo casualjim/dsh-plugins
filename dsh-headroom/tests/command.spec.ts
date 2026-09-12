@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import { buildHeadroomCommand, HeadroomCompressor } from '../src/index.js'
 
 describe('buildHeadroomCommand', () => {
   it('declares an input hint so argued forms resolve client-side', () => {
     const ctx = new Context()
+    void new SessionProjectionRegistry(ctx)
     void new TokenMeter(ctx)
     const service = new HeadroomCompressor(ctx, { baseUrl: null })
     const command = buildHeadroomCommand(service)

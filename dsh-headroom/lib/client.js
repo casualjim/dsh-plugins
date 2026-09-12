@@ -373,11 +373,12 @@ function HeadroomCard({ scope }) {
 var name = "dsh-headroom-client";
 var inject = ["slots", "settingsScope"];
 function apply(ctx) {
-  const scope = ctx.settingsScope.bind({
+  const client = ctx;
+  const scope = client.settingsScope.bind({
     namespace: "headroom",
     decode: decodeHeadroomSection
   });
-  ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
+  client.slots.inject("settings.plugin.item", () => client.slots.register({
     name: "settings.plugin.item",
     key: "headroom",
     inject: () => ({ scope })

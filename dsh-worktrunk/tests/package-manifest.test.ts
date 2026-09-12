@@ -26,8 +26,8 @@ describe('package manifest', () => {
 	})
 
 	it('pins the installed DSH contract family in devDependencies', () => {
-		expect(manifest.devDependencies['@deepseek-ai/dsh-typert-protocol']).toBe('0.1.5-rc.1')
-		expect(manifest.devDependencies['@deepseek-ai/dsh-typert-generator']).toBe('0.1.5-rc.1')
+		expect(manifest.devDependencies['@deepseek-ai/dsh-typert-protocol']).toBe('0.1.5-rc.2')
+		expect(manifest.devDependencies['@deepseek-ai/dsh-typert-generator']).toBe('0.1.5-rc.2')
 	})
 
 	it('builds the client and the typert artifacts from source', () => {

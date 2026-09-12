@@ -1,6 +1,6 @@
 import { useState, useEffect, useSyncExternalStore, type CSSProperties, type ReactNode } from 'react'
 import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
-import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
+import type { SettingsScope } from '@deepseek-ai/dsh-client-ui-settings/client'
 import {
   EMPTY_HEADROOM_SECTION,
   type HeadroomModeValue,

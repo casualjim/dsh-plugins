@@ -31,7 +31,6 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-ui-slots",
         "@deepseek-ai/dsh-client-ui-settings"
@@ -48,7 +47,7 @@
   ],
   "devDependencies": {
     "@deepseek-ai/cordis": "4.0.2",
-    "@deepseek-ai/dsh-host-webserver": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-host-webserver": "0.1.5-rc.2",
     "@types/node": "^24.13.4",
     "@types/react": "~19.3.0",
     "esbuild": "^0.28.2",

@@ -2,7 +2,15 @@
  * Configuration resolution: cordis row config wins, environment next,
  * defaults last. Ported from noheadroom's `config.ts` with DSH naming.
  */
-import { deepFreeze } from '@deepseek-ai/dsh-llm';
+/** Recursively freeze a config object (deepFreeze left @deepseek-ai/dsh-llm in 0.1.5). */
+function deepFreeze(value) {
+    if (value !== null && typeof value === 'object') {
+        for (const key of Object.keys(value))
+            deepFreeze(value[key]);
+        Object.freeze(value);
+    }
+    return value;
+}
 export const DEFAULTS = deepFreeze({
     enabled: true,
     baseUrl: null,

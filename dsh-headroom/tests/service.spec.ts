@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
-import { CallId, createMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, createMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
+import { Session, SessionId, SessionSeq } from '@deepseek-ai/dsh-session'
+import { SessionProjectionRegistry } from '@deepseek-ai/dsh-session-projection'
 import TokenMeter from '@deepseek-ai/dsh-token-meter'
 import type { CompressResult, OpenAIMessage } from 'headroom-ai'
 import { extractDshText } from '../src/bridge.js'
@@ -48,7 +49,7 @@ function echoCompress(messages: OpenAIMessage[]): CompressResult {
 }
 
 function appendToolStep(session: Session, call: string, text: string): number {
-  const callId = CallId(call)
+  const callId = ToolCallId(call)
   session.append('turn/start', { turn: 1 })
   session.append('step/start', { turn: 1, step: 1 })
   session.append('assistant/message', {
@@ -59,6 +60,7 @@ function appendToolStep(session: Session, call: string, text: string): number {
       content: [{ type: 'tool-call', id: callId, name: 'read', arguments: '{}' }],
       source: { kind: 'model', provider: 'test', model: 'test-model' },
     }),
+    stream: [],
   }, { surfaceOp: 'append' })
   session.append('tool/call', { turn: 1, step: 1, callId, name: 'read', arguments: '{}' })
   const result = session.append('tool/result', {
@@ -73,13 +75,14 @@ function appendToolStep(session: Session, call: string, text: string): number {
 
 function makeService(config: HeadroomConfig = {}): { ctx: Context; service: HeadroomCompressor } {
   const ctx = new Context()
+  void new SessionProjectionRegistry(ctx)
   void new TokenMeter(ctx)
   const service = new HeadroomCompressor(ctx, { baseUrl: 'http://127.0.0.1:8787', ...config })
   return { ctx, service }
 }
 
 function toolResultText(session: Session, seq: number): string {
-  const event = session.events[seq]
+  const event = session.eventAt(SessionSeq(seq))
   if (event === undefined || event.type !== 'tool/result') return ''
   return extractDshText(event.data.message.content[0].content as ContentBlock[])
 }
@@ -107,11 +110,9 @@ describe('HeadroomCompressor pass', () => {
     expect(toolResultText(session, replacementSeq)).toBe(COMPRESSED)
 
     // Shadow-price protocol: the prune event prices the original node.
-    const prune = session.events[replacementSeq - 1]
-    expect(prune.type).toBe('compaction/prune')
-    if (prune.type === 'compaction/prune') {
-      expect(prune.data.shadowedSeqs).toEqual([originalSeq])
-    }
+    const prune = session.eventAt(SessionSeq(replacementSeq - 1))
+    if (prune?.type !== 'compaction/prune') throw new Error('expected compaction/prune directly before the replacement')
+    expect(prune.data.shadowedSeqs).toEqual([originalSeq])
 
     // The surface no longer contains the original node.
     expect(session.surface.nodes).not.toContain(originalSeq)

@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto'
 import type { OpenAIMessage } from 'headroom-ai'
 import type {
   AssistantMessage,
-  CallId,
+  ToolCallId,
   ContentBlock,
   Message,
   ToolResultMessage,
@@ -58,7 +58,7 @@ function extractAssistantText(message: AssistantMessage): string {
 /** One assistant tool-call block in DSH content. */
 interface DshToolCallBlock {
   readonly type: 'tool-call'
-  readonly id: CallId
+  readonly id: ToolCallId
   readonly name: string
   readonly arguments: string
 }

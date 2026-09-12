@@ -12,11 +12,12 @@ import { decodeHeadroomSection } from './section-model.js';
 export const name = 'dsh-headroom-client';
 export const inject = ['slots', 'settingsScope'];
 export function apply(ctx) {
-    const scope = ctx.settingsScope.bind({
+    const client = ctx;
+    const scope = client.settingsScope.bind({
         namespace: 'headroom',
         decode: decodeHeadroomSection,
     });
-    ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
+    client.slots.inject('settings.plugin.item', () => client.slots.register({
         name: 'settings.plugin.item',
         key: 'headroom',
         inject: () => ({ scope }),

@@ -10,6 +10,7 @@
  */
 export type { CompressResult } from 'headroom-ai';
 import type { OpenAIMessage } from 'headroom-ai';
+import type { SessionSeq } from '@deepseek-ai/dsh-session';
 export type HeadroomMode = 'normal' | 'quiet' | 'silent';
 /** Raw plugin configuration accepted by the cordis row / constructor. */
 export interface HeadroomConfig {
@@ -116,8 +117,8 @@ export interface HeadroomStats {
 export interface HeadroomPassResult {
     /** Landed replacements: original seq → replacement seq. */
     replacements: Array<{
-        originalSeq: number;
-        replacementSeq: number;
+        originalSeq: SessionSeq;
+        replacementSeq: SessionSeq;
         callId: string;
     }>;
     appliedMessages: number;

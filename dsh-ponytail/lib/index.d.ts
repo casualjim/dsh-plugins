@@ -22,7 +22,7 @@ export interface Config {
     readonly defaultMode?: string;
 }
 /** Valid runtime modes (the `review` mode is a session-only skill, never a default). */
-declare const RUNTIME_MODES: readonly ["off", "lite", "full", "ultra"];
+declare const RUNTIME_MODES: readonly ['off', 'lite', 'full', 'ultra'];
 type RuntimeMode = (typeof RUNTIME_MODES)[number];
 /** Parse a SKILL.md frontmatter block (`name`, `description`) and return the body. */
 export declare function parseSkill(file: string): Pick<SkillRegistration, 'name' | 'description' | 'content'>;
