@@ -39,6 +39,32 @@ describe('worktrunk connection', () => {
     await expect(connection.removeWorktree({ workspaceId: 'w1', branch: 'b' })).rejects.toMatchObject({ code: 'SESSION_WORKTREE', retryable: false })
   })
 
+  /**
+   * Every domain code through the real adapter: a fabricated `{ retryable }` would prove
+   * nothing, so each row drives the inner envelope and asserts the flag the panel's Retry
+   * button reads. `WT_NOT_INSTALLED` (design §7/§9's retryable setup state) is the row that
+   * regressed to `false` when the mapping was blanket-false.
+   */
+  const domainRetryability: ReadonlyArray<[string, boolean]> = [
+    ['WT_NOT_INSTALLED', true],
+    ['WT_BUSY', true],
+    ['WT_FAILED', true],
+    ['HOOK_FAILED', true],
+    ['PERMISSION_UNVERIFIED', true],
+    ['NOT_A_REPO', true],
+    ['NO_INITIAL_COMMIT', true],
+    ['NO_LOCAL_BRANCH', true],
+    ['WT_BAD_JSON', true],
+    ['SESSION_WORKTREE', false],
+    ['NOT_FOUND', false],
+    ['PRESET_UNAVAILABLE', false],
+  ]
+  it.each(domainRetryability)('classifies a %s domain failure as retryable=%s', async (code, retryable) => {
+    const { rpc } = fakeRpc({ ok: true, value: { ok: false, error: { code, message: 'domain refused', details: {} } } })
+    const connection = createWorktrunkConnection(rpc as never)
+    await expect(connection.readPanel({ workspaceId: 'w1' })).rejects.toMatchObject({ code, retryable })
+  })
+
   it('aborts in-flight calls on dispose and rejects further ones', async () => {
     let observed: AbortSignal | undefined
     const rpc = { call: (_c: string, _e: string, _b: unknown, signal?: AbortSignal) => { observed = signal; return new Promise(() => {}) } }

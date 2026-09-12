@@ -1,6 +1,9 @@
 /**
  * Removal confirmation. `wt` owns the gates; this dialog only states them, so
- * the two choices it offers map one-to-one onto `--force` and `--force-delete`.
+ * its choices map one-to-one onto `--force`, `--force-delete`, and keeping the
+ * branch. Both branch choices are always offered when a branch can be deleted —
+ * the panel cannot know whether the branch is merged, and `wt remove` refuses an
+ * unmerged branch without `--force-delete`.
  */
 import { type ReactElement } from 'react';
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots';
@@ -30,7 +33,6 @@ export declare function removeDialogSubmit(facts: {
 }) => void): void;
 export interface RemoveDialogProps {
     readonly row: WorktreeRow;
-    readonly unmerged: boolean;
     readonly t: Translate;
     readonly pending?: boolean;
     readonly errorKey?: string;

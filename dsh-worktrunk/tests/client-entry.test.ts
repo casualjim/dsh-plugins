@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { apply, createPermissionConfirmation, currentWorkspaceIdOf, describePermissionOutcome, inject, name } from '../src/client/entry.js'
 import { PermissionDialog } from '../src/client/panel/PermissionDialog.js'
+import { en } from '../src/client/locale.js'
 
 /**
  * The connection service is `{ rpc: { call } }` — `ctx.connection.rpc` is the
@@ -55,10 +56,17 @@ describe('client entry', () => {
   })
 
   it('decides what each permission outcome means for opening the session', () => {
-    expect(describePermissionOutcome('applied')).toEqual({ key: 'permission.applied', openSession: true })
-    expect(describePermissionOutcome('already-full-access')).toEqual({ key: 'permission.applied', openSession: true })
+    expect(describePermissionOutcome('applied')).toEqual({ key: undefined, openSession: true })
+    expect(describePermissionOutcome('already-full-access')).toEqual({ key: undefined, openSession: true })
     expect(describePermissionOutcome('user-restricted')).toEqual({ key: 'permission.userRestricted', openSession: true })
     expect(describePermissionOutcome('unavailable')).toEqual({ key: 'permission.unavailable', openSession: false })
+  })
+
+  it('only ever names a locale key the dictionary actually has', () => {
+    for (const status of ['applied', 'already-full-access', 'user-restricted', 'unavailable', 'something-else']) {
+      const { key } = describePermissionOutcome(status)
+      expect(key === undefined || key in en, `${status} -> ${String(key)}`).toBe(true)
+    }
   })
 
   it('keeps the outcome mapping exhaustive: an unknown status never claims full access', () => {

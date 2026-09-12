@@ -2,7 +2,8 @@
 #
 # The permission row REPLACES the whole permission config, so the upstream
 # presets are copied verbatim here and one is added. A test asserts all four
-# survive, so an upstream preset added later fails loudly instead of vanishing.
+# survive, so a preset DELETED from this file fails loudly. An upstream preset
+# ADDED later is silently dropped by the replacing row: copy it in when it ships.
 - id: permission
   config:
     presets:

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 /**
  * End-to-end check of the **built** browser artifact. The GUI lives in the
@@ -82,6 +82,41 @@ describe('built client bundle', () => {
     expect(typeof exports.apply).toBe('function')
     expect(requested.length).toBeGreaterThan(0)
     expect([...new Set(requested)].sort()).toEqual(['react', 'react/jsx-runtime'])
+  })
+
+  it('inlines the panel stylesheet and injects it once, under one tag id', () => {
+    expect(bundle).toContain('dsh-worktrunk/worktree.css')
+    expect(bundle).toContain('data-plugin-css')
+    const tags: Array<{ dataset: Record<string, string>, textContent: string }> = []
+    vi.stubGlobal('document', {
+      querySelector: (selector: string) => (tags.length > 0 && selector.includes('dsh-worktrunk/worktree.css') ? tags[0] : null),
+      createElement: () => ({ dataset: {}, textContent: '' }),
+      head: { appendChild: (tag: unknown) => { tags.push(tag as (typeof tags)[number]) } },
+    })
+    try {
+      const { exports } = loadBundle()
+      ;(exports.injectPanelStyle as () => void)()
+      ;(exports.injectPanelStyle as () => void)()
+      expect(tags).toHaveLength(1)
+      expect(tags[0]?.dataset.plugin).toBe('dsh-worktrunk')
+      expect(tags[0]?.dataset.pluginCss).toBe('dsh-worktrunk/worktree.css')
+      expect(tags[0]?.textContent).toContain('.wt-panel')
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('scopes every stylesheet selector to a wt- class', () => {
+    const css = readFileSync(new URL('../src/client/worktree.css', import.meta.url), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+    const selectors = [...css.matchAll(/(?:^|\})\s*([^{}]+)\{/g)].map(match => (match[1] ?? '').trim())
+    expect(selectors.length).toBeGreaterThan(10)
+    for (const selector of selectors) {
+      for (const part of selector.split(',')) {
+        const trimmed = part.trim()
+        if (trimmed === '') continue
+        expect(/^\.wt-[a-z-]/.test(trimmed), `unscoped selector: ${trimmed}`).toBe(true)
+      }
+    }
   })
 
   it('registers the sidebar panel entry and the keyed main panel', () => {

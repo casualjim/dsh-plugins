@@ -1,0 +1,373 @@
+/*
+ * Panel styling. DSH's shell styles are CSS-modules-scoped, so an unstyled
+ * plugin renders browser defaults; every rule here is prefixed `wt-` and every
+ * value comes from the shell's own `--dsw-*` design tokens (verified against
+ * the shipped frontend CSS), so the panel reads as part of the shell.
+ */
+
+.wt-panel-host {
+	position: relative;
+	display: flex;
+	flex-direction: column;
+	height: 100%;
+	min-height: 0;
+}
+
+.wt-panel {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	height: 100%;
+	min-height: 0;
+	padding: 16px;
+	overflow: auto;
+	box-sizing: border-box;
+	font-family: var(--dsw-font-family);
+	font-size: 14px;
+	line-height: 22px;
+	color: var(--dsw-alias-label-primary);
+	background: var(--dsw-alias-bg-base);
+}
+
+.wt-panel-header {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-bottom: 12px;
+	border-bottom: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.wt-panel-header h2 {
+	margin: 0;
+	font-size: 16px;
+	line-height: 24px;
+	font-weight: 600;
+}
+
+.wt-panel-repo {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--dsw-alias-label-secondary);
+}
+
+.wt-panel-default {
+	flex: none;
+	color: var(--dsw-alias-label-tertiary);
+	font-size: 13px;
+	line-height: 20px;
+}
+
+.wt-panel button,
+.wt-dialog button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	gap: 4px;
+	flex: none;
+	padding: 0 12px;
+	height: 28px;
+	border: none;
+	border-radius: 14px;
+	background: var(--dsw-alias-bg-module-platform);
+	color: var(--dsw-alias-label-primary);
+	font: inherit;
+	font-size: 13px;
+	line-height: 20px;
+	cursor: pointer;
+}
+
+.wt-panel button:hover,
+.wt-dialog button:hover {
+	background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.wt-panel button:active,
+.wt-dialog button:active {
+	background: var(--dsw-alias-interactive-bg-active);
+}
+
+.wt-panel button:disabled,
+.wt-dialog button:disabled {
+	cursor: not-allowed;
+	opacity: 0.4;
+}
+
+.wt-rows,
+.wt-sessions {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.wt-rows {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.wt-row {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px;
+	border: 0.5px solid var(--dsw-alias-border-l3);
+	border-radius: 12px;
+	background: var(--dsw-alias-bg-layer-1);
+}
+
+.wt-row[data-selected='true'] {
+	border-color: var(--dsw-alias-brand-primary);
+}
+
+.wt-row[data-current='true'] {
+	background: var(--dsw-alias-bg-layer-2);
+}
+
+.wt-row-main {
+	display: flex;
+	align-items: baseline;
+	gap: 8px;
+	padding: 0;
+	height: auto;
+	background: transparent;
+	text-align: left;
+}
+
+.wt-row-main:hover {
+	background: transparent;
+}
+
+.wt-row-label {
+	font-weight: 500;
+	color: var(--dsw-alias-label-primary);
+}
+
+.wt-row-mark {
+	flex: none;
+	font-size: 12px;
+	line-height: 18px;
+	color: var(--dsw-alias-brand-primary);
+}
+
+.wt-row-head {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	color: var(--dsw-alias-label-secondary);
+	font-family: var(--ds-font-family-code);
+	font-size: 13px;
+	line-height: 20px;
+}
+
+.wt-row-toggle {
+	align-self: flex-start;
+	background: transparent;
+	color: var(--dsw-alias-label-secondary);
+}
+
+.wt-row-chips {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.wt-chip {
+	padding: 2px 8px;
+	border-radius: 999px;
+	background: var(--dsw-alias-bg-module-platform);
+	color: var(--dsw-alias-label-secondary);
+	font-size: 12px;
+	line-height: 18px;
+}
+
+.wt-row-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 4px;
+}
+
+.wt-sessions {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	padding-left: 12px;
+	border-left: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.wt-sessions button {
+	justify-content: flex-start;
+	width: 100%;
+	background: transparent;
+	color: var(--dsw-alias-label-secondary);
+}
+
+.wt-session-empty {
+	color: var(--dsw-alias-label-tertiary);
+	font-size: 13px;
+	line-height: 20px;
+}
+
+.wt-panel-loading,
+.wt-panel-empty {
+	color: var(--dsw-alias-label-secondary);
+}
+
+.wt-panel-error {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 12px;
+	padding: 16px;
+	color: var(--dsw-alias-state-error-primary);
+}
+
+.wt-panel-stale,
+.wt-panel-notice {
+	margin: 0;
+	color: var(--dsw-alias-state-warn-label);
+}
+
+.wt-panel-error p,
+.wt-panel-stale p {
+	margin: 0;
+}
+
+/*
+ * Dialogs overlay the panel body instead of the whole shell: the panel owns its
+ * own scroll region, and a modal is not available without the overlay slot the
+ * design rejected.
+ */
+.wt-dialog {
+	position: absolute;
+	inset: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	padding: 16px;
+	overflow: auto;
+	box-sizing: border-box;
+	border-radius: 12px;
+	background: var(--dsw-alias-bg-base);
+	box-shadow: var(--dsw-shadow-lv3);
+	font-family: var(--dsw-font-family);
+	font-size: 14px;
+	line-height: 22px;
+	color: var(--dsw-alias-label-primary);
+}
+
+.wt-dialog h3,
+.wt-dialog h4 {
+	margin: 0;
+	font-size: 16px;
+	line-height: 24px;
+	font-weight: 600;
+}
+
+.wt-dialog h4 {
+	font-size: 13px;
+	line-height: 20px;
+	color: var(--dsw-alias-label-secondary);
+}
+
+.wt-dialog p {
+	margin: 0;
+}
+
+.wt-dialog label {
+	display: flex;
+	align-items: flex-start;
+	gap: 8px;
+	font-size: 13px;
+	line-height: 20px;
+	color: var(--dsw-alias-label-secondary);
+}
+
+.wt-dialog input,
+.wt-dialog select {
+	flex: 1;
+	min-width: 0;
+	height: 28px;
+	padding: 0 8px;
+	box-sizing: border-box;
+	border: 0.5px solid var(--dsw-alias-border-l3);
+	border-radius: 8px;
+	background: var(--dsw-alias-bg-layer-1);
+	color: var(--dsw-alias-label-primary);
+	font: inherit;
+	font-size: 13px;
+}
+
+.wt-dialog input[type='checkbox'] {
+	flex: none;
+	width: 16px;
+	height: 16px;
+	padding: 0;
+	margin: 2px 0 0;
+	accent-color: var(--dsw-alias-brand-primary);
+}
+
+.wt-hooks {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+	padding: 12px;
+	border: 0.5px solid var(--dsw-alias-border-l3);
+	border-radius: 12px;
+	background: var(--dsw-alias-bg-layer-1);
+}
+
+.wt-hooks ul {
+	margin: 0;
+	padding-left: 20px;
+	color: var(--dsw-alias-label-secondary);
+	font-family: var(--ds-font-family-code);
+	font-size: 12px;
+	line-height: 18px;
+}
+
+.wt-hooks-blocking {
+	color: var(--dsw-alias-state-warn-label);
+	font-size: 13px;
+}
+
+.wt-hooks-skip,
+.wt-dialog-choice {
+	color: var(--dsw-alias-label-primary);
+}
+
+.wt-dialog-hint {
+	color: var(--dsw-alias-label-tertiary);
+	font-size: 12px;
+	line-height: 18px;
+}
+
+.wt-dialog-error {
+	color: var(--dsw-alias-state-error-primary);
+}
+
+.wt-dialog-working {
+	color: var(--dsw-alias-label-secondary);
+}
+
+.wt-dialog footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: 8px;
+	margin-top: auto;
+	padding-top: 12px;
+	border-top: 0.5px solid var(--dsw-alias-border-l2);
+}
+
+.wt-dialog footer button[type='submit'] {
+	background: var(--dsw-alias-button-primary-fill);
+	color: var(--dsw-alias-label-primary-inverted);
+}
+
+.wt-dialog footer button[type='submit']:hover:not(:disabled) {
+	background: var(--dsw-alias-button-primary-hover);
+}

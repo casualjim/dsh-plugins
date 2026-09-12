@@ -24,6 +24,24 @@ export class WorktrunkConnectionError extends Error {
         this.retryable = options.retryable;
     }
 }
+/**
+ * Domain failures a retry can clear on its own: `wt` absent or busy, an operation that failed,
+ * a hook failure, an unverified permission, and the workspace readiness states that clear once
+ * the repository is fixed. Every other code means the user must act or the profile must change,
+ * so the panel shows the reason without a Retry button. Gateway/transport failures stay
+ * retryable unconditionally — see `invoke`.
+ */
+const RETRYABLE_DOMAIN_CODES = new Set([
+    'WT_NOT_INSTALLED',
+    'WT_BUSY',
+    'WT_FAILED',
+    'HOOK_FAILED',
+    'PERMISSION_UNVERIFIED',
+    'NOT_A_REPO',
+    'NO_INITIAL_COMMIT',
+    'NO_LOCAL_BRANCH',
+    'WT_BAD_JSON',
+]);
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -70,11 +88,12 @@ export function createWorktrunkConnection(rpc) {
             const inner = asEnvelope(envelope.value);
             if (!inner.ok) {
                 const error = inner.error;
+                const code = typeof error.code === 'string' ? error.code : 'WORKTRUNK_DOMAIN_FAILED';
                 throw new WorktrunkConnectionError({
-                    code: typeof error.code === 'string' ? error.code : 'WORKTRUNK_DOMAIN_FAILED',
+                    code,
                     message: typeof error.message === 'string' ? error.message : '',
                     details: { endpoint, ...(isRecord(error.details) ? error.details : {}) },
-                    retryable: false,
+                    retryable: RETRYABLE_DOMAIN_CODES.has(code),
                 });
             }
             return inner.value;

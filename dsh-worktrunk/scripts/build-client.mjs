@@ -50,6 +50,8 @@ const result = await build({
 	platform: 'browser',
 	target: 'es2022',
 	jsx: 'automatic',
+	// The panel's stylesheet is inlined as a text export and injected from `apply`.
+	loader: { '.css': 'text' },
 	external: EXTERNALS,
 	logLevel: 'warning',
 	write: false,

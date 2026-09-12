@@ -26,6 +26,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/client/entry.ts
 var entry_exports = {};
 __export(entry_exports, {
+  WORKTRUNK_CSS_TAG_ID: () => WORKTRUNK_CSS_TAG_ID,
   WORKTRUNK_PANEL_ID: () => WORKTRUNK_PANEL_ID,
   WORKTRUNK_PANEL_ORDER: () => WORKTRUNK_PANEL_ORDER,
   apply: () => apply,
@@ -33,6 +34,7 @@ __export(entry_exports, {
   currentWorkspaceIdOf: () => currentWorkspaceIdOf,
   describePermissionOutcome: () => describePermissionOutcome,
   inject: () => inject,
+  injectPanelStyle: () => injectPanelStyle,
   name: () => name
 });
 module.exports = __toCommonJS(entry_exports);
@@ -64,6 +66,7 @@ var en = {
   "panel.create": "Create worktree",
   "panel.sessions": "Sessions",
   "panel.noSessions": "No sessions yet",
+  "panel.synced": "Gitignored files synced.",
   "create.title": "Create worktree",
   "create.description": "A new branch and worktree in {repo}. Worktrees live outside the repository.",
   "create.branch": "New branch name",
@@ -139,6 +142,17 @@ var WorktrunkConnectionError = class extends Error {
     this.retryable = options.retryable;
   }
 };
+var RETRYABLE_DOMAIN_CODES = /* @__PURE__ */ new Set([
+  "WT_NOT_INSTALLED",
+  "WT_BUSY",
+  "WT_FAILED",
+  "HOOK_FAILED",
+  "PERMISSION_UNVERIFIED",
+  "NOT_A_REPO",
+  "NO_INITIAL_COMMIT",
+  "NO_LOCAL_BRANCH",
+  "WT_BAD_JSON"
+]);
 function isRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -180,11 +194,12 @@ function createWorktrunkConnection(rpc) {
       const inner = asEnvelope(envelope.value);
       if (!inner.ok) {
         const error = inner.error;
+        const code = typeof error.code === "string" ? error.code : "WORKTRUNK_DOMAIN_FAILED";
         throw new WorktrunkConnectionError({
-          code: typeof error.code === "string" ? error.code : "WORKTRUNK_DOMAIN_FAILED",
+          code,
           message: typeof error.message === "string" ? error.message : "",
           details: { endpoint, ...isRecord(error.details) ? error.details : {} },
-          retryable: false
+          retryable: RETRYABLE_DOMAIN_CODES.has(code)
         });
       }
       return inner.value;
@@ -494,11 +509,12 @@ function RemoveDialog(props) {
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "checkbox", checked: force, onChange: (event) => setForce(event.target.checked) }),
           t("remove.force")
         ] }) : null,
-        facts.canDeleteBranch && props.unmerged ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { children: [
+        facts.canDeleteBranch ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "wt-dialog-choice", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "checkbox", checked: forceDeleteBranch, onChange: (event) => setForceDeleteBranch(event.target.checked) }),
-          t("remove.forceDeleteBranch")
+          t("remove.forceDeleteBranch"),
+          /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("span", { className: "wt-dialog-hint", children: t("remove.branchUnmerged") })
         ] }) : null,
-        facts.canDeleteBranch && !props.unmerged ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { children: [
+        facts.canDeleteBranch ? /* @__PURE__ */ (0, import_jsx_runtime4.jsxs)("label", { className: "wt-dialog-choice", children: [
           /* @__PURE__ */ (0, import_jsx_runtime4.jsx)("input", { type: "checkbox", checked: keepBranch, onChange: (event) => setKeepBranch(event.target.checked) }),
           t("remove.keepBranch")
         ] }) : null,
@@ -616,9 +632,22 @@ function PanelIcon({ size, active }) {
   ] });
 }
 
+// src/client/worktree.css
+var worktree_default = "/*\n * Panel styling. DSH's shell styles are CSS-modules-scoped, so an unstyled\n * plugin renders browser defaults; every rule here is prefixed `wt-` and every\n * value comes from the shell's own `--dsw-*` design tokens (verified against\n * the shipped frontend CSS), so the panel reads as part of the shell.\n */\n\n.wt-panel-host {\n	position: relative;\n	display: flex;\n	flex-direction: column;\n	height: 100%;\n	min-height: 0;\n}\n\n.wt-panel {\n	display: flex;\n	flex-direction: column;\n	gap: 12px;\n	height: 100%;\n	min-height: 0;\n	padding: 16px;\n	overflow: auto;\n	box-sizing: border-box;\n	font-family: var(--dsw-font-family);\n	font-size: 14px;\n	line-height: 22px;\n	color: var(--dsw-alias-label-primary);\n	background: var(--dsw-alias-bg-base);\n}\n\n.wt-panel-header {\n	display: flex;\n	align-items: center;\n	gap: 8px;\n	padding-bottom: 12px;\n	border-bottom: 0.5px solid var(--dsw-alias-border-l2);\n}\n\n.wt-panel-header h2 {\n	margin: 0;\n	font-size: 16px;\n	line-height: 24px;\n	font-weight: 600;\n}\n\n.wt-panel-repo {\n	flex: 1;\n	min-width: 0;\n	overflow: hidden;\n	text-overflow: ellipsis;\n	white-space: nowrap;\n	color: var(--dsw-alias-label-secondary);\n}\n\n.wt-panel-default {\n	flex: none;\n	color: var(--dsw-alias-label-tertiary);\n	font-size: 13px;\n	line-height: 20px;\n}\n\n.wt-panel button,\n.wt-dialog button {\n	display: inline-flex;\n	align-items: center;\n	justify-content: center;\n	gap: 4px;\n	flex: none;\n	padding: 0 12px;\n	height: 28px;\n	border: none;\n	border-radius: 14px;\n	background: var(--dsw-alias-bg-module-platform);\n	color: var(--dsw-alias-label-primary);\n	font: inherit;\n	font-size: 13px;\n	line-height: 20px;\n	cursor: pointer;\n}\n\n.wt-panel button:hover,\n.wt-dialog button:hover {\n	background: var(--dsw-alias-interactive-bg-hover);\n}\n\n.wt-panel button:active,\n.wt-dialog button:active {\n	background: var(--dsw-alias-interactive-bg-active);\n}\n\n.wt-panel button:disabled,\n.wt-dialog button:disabled {\n	cursor: not-allowed;\n	opacity: 0.4;\n}\n\n.wt-rows,\n.wt-sessions {\n	margin: 0;\n	padding: 0;\n	list-style: none;\n}\n\n.wt-rows {\n	display: flex;\n	flex-direction: column;\n	gap: 8px;\n}\n\n.wt-row {\n	display: flex;\n	flex-direction: column;\n	gap: 8px;\n	padding: 12px;\n	border: 0.5px solid var(--dsw-alias-border-l3);\n	border-radius: 12px;\n	background: var(--dsw-alias-bg-layer-1);\n}\n\n.wt-row[data-selected='true'] {\n	border-color: var(--dsw-alias-brand-primary);\n}\n\n.wt-row[data-current='true'] {\n	background: var(--dsw-alias-bg-layer-2);\n}\n\n.wt-row-main {\n	display: flex;\n	align-items: baseline;\n	gap: 8px;\n	padding: 0;\n	height: auto;\n	background: transparent;\n	text-align: left;\n}\n\n.wt-row-main:hover {\n	background: transparent;\n}\n\n.wt-row-label {\n	font-weight: 500;\n	color: var(--dsw-alias-label-primary);\n}\n\n.wt-row-mark {\n	flex: none;\n	font-size: 12px;\n	line-height: 18px;\n	color: var(--dsw-alias-brand-primary);\n}\n\n.wt-row-head {\n	flex: 1;\n	min-width: 0;\n	overflow: hidden;\n	text-overflow: ellipsis;\n	white-space: nowrap;\n	color: var(--dsw-alias-label-secondary);\n	font-family: var(--ds-font-family-code);\n	font-size: 13px;\n	line-height: 20px;\n}\n\n.wt-row-toggle {\n	align-self: flex-start;\n	background: transparent;\n	color: var(--dsw-alias-label-secondary);\n}\n\n.wt-row-chips {\n	display: flex;\n	flex-wrap: wrap;\n	gap: 4px;\n}\n\n.wt-chip {\n	padding: 2px 8px;\n	border-radius: 999px;\n	background: var(--dsw-alias-bg-module-platform);\n	color: var(--dsw-alias-label-secondary);\n	font-size: 12px;\n	line-height: 18px;\n}\n\n.wt-row-actions {\n	display: flex;\n	flex-wrap: wrap;\n	gap: 4px;\n}\n\n.wt-sessions {\n	display: flex;\n	flex-direction: column;\n	gap: 4px;\n	padding-left: 12px;\n	border-left: 0.5px solid var(--dsw-alias-border-l2);\n}\n\n.wt-sessions button {\n	justify-content: flex-start;\n	width: 100%;\n	background: transparent;\n	color: var(--dsw-alias-label-secondary);\n}\n\n.wt-session-empty {\n	color: var(--dsw-alias-label-tertiary);\n	font-size: 13px;\n	line-height: 20px;\n}\n\n.wt-panel-loading,\n.wt-panel-empty {\n	color: var(--dsw-alias-label-secondary);\n}\n\n.wt-panel-error {\n	display: flex;\n	flex-direction: column;\n	align-items: flex-start;\n	gap: 12px;\n	padding: 16px;\n	color: var(--dsw-alias-state-error-primary);\n}\n\n.wt-panel-stale,\n.wt-panel-notice {\n	margin: 0;\n	color: var(--dsw-alias-state-warn-label);\n}\n\n.wt-panel-error p,\n.wt-panel-stale p {\n	margin: 0;\n}\n\n/*\n * Dialogs overlay the panel body instead of the whole shell: the panel owns its\n * own scroll region, and a modal is not available without the overlay slot the\n * design rejected.\n */\n.wt-dialog {\n	position: absolute;\n	inset: 0;\n	display: flex;\n	flex-direction: column;\n	gap: 12px;\n	padding: 16px;\n	overflow: auto;\n	box-sizing: border-box;\n	border-radius: 12px;\n	background: var(--dsw-alias-bg-base);\n	box-shadow: var(--dsw-shadow-lv3);\n	font-family: var(--dsw-font-family);\n	font-size: 14px;\n	line-height: 22px;\n	color: var(--dsw-alias-label-primary);\n}\n\n.wt-dialog h3,\n.wt-dialog h4 {\n	margin: 0;\n	font-size: 16px;\n	line-height: 24px;\n	font-weight: 600;\n}\n\n.wt-dialog h4 {\n	font-size: 13px;\n	line-height: 20px;\n	color: var(--dsw-alias-label-secondary);\n}\n\n.wt-dialog p {\n	margin: 0;\n}\n\n.wt-dialog label {\n	display: flex;\n	align-items: flex-start;\n	gap: 8px;\n	font-size: 13px;\n	line-height: 20px;\n	color: var(--dsw-alias-label-secondary);\n}\n\n.wt-dialog input,\n.wt-dialog select {\n	flex: 1;\n	min-width: 0;\n	height: 28px;\n	padding: 0 8px;\n	box-sizing: border-box;\n	border: 0.5px solid var(--dsw-alias-border-l3);\n	border-radius: 8px;\n	background: var(--dsw-alias-bg-layer-1);\n	color: var(--dsw-alias-label-primary);\n	font: inherit;\n	font-size: 13px;\n}\n\n.wt-dialog input[type='checkbox'] {\n	flex: none;\n	width: 16px;\n	height: 16px;\n	padding: 0;\n	margin: 2px 0 0;\n	accent-color: var(--dsw-alias-brand-primary);\n}\n\n.wt-hooks {\n	display: flex;\n	flex-direction: column;\n	gap: 8px;\n	padding: 12px;\n	border: 0.5px solid var(--dsw-alias-border-l3);\n	border-radius: 12px;\n	background: var(--dsw-alias-bg-layer-1);\n}\n\n.wt-hooks ul {\n	margin: 0;\n	padding-left: 20px;\n	color: var(--dsw-alias-label-secondary);\n	font-family: var(--ds-font-family-code);\n	font-size: 12px;\n	line-height: 18px;\n}\n\n.wt-hooks-blocking {\n	color: var(--dsw-alias-state-warn-label);\n	font-size: 13px;\n}\n\n.wt-hooks-skip,\n.wt-dialog-choice {\n	color: var(--dsw-alias-label-primary);\n}\n\n.wt-dialog-hint {\n	color: var(--dsw-alias-label-tertiary);\n	font-size: 12px;\n	line-height: 18px;\n}\n\n.wt-dialog-error {\n	color: var(--dsw-alias-state-error-primary);\n}\n\n.wt-dialog-working {\n	color: var(--dsw-alias-label-secondary);\n}\n\n.wt-dialog footer {\n	display: flex;\n	justify-content: flex-end;\n	gap: 8px;\n	margin-top: auto;\n	padding-top: 12px;\n	border-top: 0.5px solid var(--dsw-alias-border-l2);\n}\n\n.wt-dialog footer button[type='submit'] {\n	background: var(--dsw-alias-button-primary-fill);\n	color: var(--dsw-alias-label-primary-inverted);\n}\n\n.wt-dialog footer button[type='submit']:hover:not(:disabled) {\n	background: var(--dsw-alias-button-primary-hover);\n}\n";
+
 // src/client/entry.ts
 var WORKTRUNK_PANEL_ID = "worktrunk";
 var WORKTRUNK_PANEL_ORDER = 20;
+var WORKTRUNK_CSS_TAG_ID = "dsh-worktrunk/worktree.css";
+function injectPanelStyle() {
+  if (typeof document === "undefined") return;
+  if (document.querySelector(`style[data-plugin-css=${JSON.stringify(WORKTRUNK_CSS_TAG_ID)}]`) !== null) return;
+  const tag = document.createElement("style");
+  tag.dataset.plugin = "dsh-worktrunk";
+  tag.dataset.pluginCss = WORKTRUNK_CSS_TAG_ID;
+  tag.textContent = worktree_default;
+  document.head.appendChild(tag);
+}
 var NO_REPO = { root: "", defaultBranch: "main", forge: null };
 function currentWorkspaceIdOf(rows, currentSessionId) {
   const items = rows ?? [];
@@ -632,7 +661,7 @@ function describePermissionOutcome(status) {
   switch (status) {
     case "applied":
     case "already-full-access":
-      return { key: "permission.applied", openSession: true };
+      return { key: void 0, openSession: true };
     case "user-restricted":
       return { key: "permission.userRestricted", openSession: true };
     default:
@@ -648,7 +677,7 @@ function createPermissionConfirmation() {
         const sessionId = await input.sessions.create({ cwd });
         const result = await input.ensurePermission({ sessionId });
         const outcome = describePermissionOutcome(result.status);
-        input.notice(outcome.key === "permission.applied" ? void 0 : outcome.key);
+        input.notice(outcome.key);
         if (outcome.openSession) input.sessions.open(sessionId);
       } catch (error) {
         input.notice(worktreeErrorMessageKey(error));
@@ -666,6 +695,7 @@ var inject = ["connection", "locale", "slots", "sessions", "workspaces"];
 function apply(ctx) {
   const client = ctx;
   const t = ctx.locale.bind(WORKTRUNK_NS);
+  injectPanelStyle();
   ctx.effect(() => ctx.locale.register(WORKTRUNK_NS, "en", en), "dsh-worktrunk: locale dictionary");
   const connection = createWorktrunkConnection(client.connection.rpc);
   ctx.effect(() => () => connection.dispose(), "dsh-worktrunk: connection disposal");
@@ -729,17 +759,17 @@ function apply(ctx) {
         },
         onSyncIgnored: (row) => {
           const workspaceId = currentWorkspaceId();
-          if (workspaceId !== void 0) void connection.copyIgnored({ workspaceId, path: row.path });
+          if (workspaceId === void 0) return;
+          setErrorKey(void 0);
+          void connection.copyIgnored({ workspaceId, path: row.path }).then(() => setErrorKey("panel.synced")).catch((error) => setErrorKey(worktreeErrorMessageKey(error)));
         },
         onMerge: (row) => {
           setErrorKey(void 0);
           setDialog({ kind: "merge", row });
         },
-        // ponytail: `unmerged` is not in the panel snapshot, so the delete-branch gate cannot be
-        // pre-emptive; the host refuses and the notice names it. Widen WorktreeRow if it must show.
         onRemove: (row) => {
           setErrorKey(void 0);
-          setDialog({ kind: "remove", row, unmerged: false });
+          setDialog({ kind: "remove", row });
         }
       }),
       dialog.kind === "create" ? (0, import_react6.createElement)(CreateDialog, {
@@ -753,7 +783,6 @@ function apply(ctx) {
       }) : null,
       dialog.kind === "remove" ? (0, import_react6.createElement)(RemoveDialog, {
         row: dialog.row,
-        unmerged: dialog.unmerged,
         t,
         errorKey,
         onCancel: () => setDialog({ kind: "none" }),

@@ -11,9 +11,14 @@ describe('bundle patch', () => {
   })
 
   it('states the worktree preset keeps approval prompts on', () => {
-    const preset = patch.slice(patch.indexOf('worktree-full-access:'))
+    // Bounded to the preset's own block: slicing to EOF would let an `approval: ask` on a later
+    // row satisfy this assertion vacuously.
+    const start = patch.indexOf('worktree-full-access:')
+    const end = patch.indexOf('\n- ', start)
+    const preset = patch.slice(start, end === -1 ? undefined : end)
     expect(preset).toContain('sandbox: danger-full-access')
     expect(preset).toContain('approval: ask')
+    expect(preset).not.toContain('insert:')
   })
 
   it('still inserts the plugin row with its config', () => {

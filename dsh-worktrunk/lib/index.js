@@ -15,7 +15,7 @@
  *    agent is told so once per session.
  *
  * Setup steps (mise install, env generation, copying gitignored files) are
- * worktrunk's job, declared per-repository in `wt.toml` (`pre-start` /
+ * worktrunk's job, declared per-repository in `.config/wt.toml` (`pre-start` /
  * `post-start` hooks) — see the README. This plugin only drives the CLI.
  *
  * Requires the `wt` binary on the host (`brew install worktrunk`).
@@ -60,11 +60,11 @@ const MERGE_RECOVERY_HINT = 'If a merge was left in progress, resolve the confli
 function registerTools(ctx, config) {
     ctx.tools.register(defineTool({
         name: 'worktrunk_create',
-        description: 'Create a new git branch and worktree with worktrunk (`wt switch --create`). The worktree lives OUTSIDE the repository (sibling directory by default); its `pre-start`/`post-start` hooks from the repo\'s wt.toml run on creation (dependency install, env generation, copying gitignored files). The worktree is registered as a DSH workspace — start a new session inside it to work there.',
+        description: 'Create a new git branch and worktree with worktrunk (`wt switch --create`). The worktree lives OUTSIDE the repository (sibling directory by default); its `pre-start`/`post-start` hooks from the repo\'s .config/wt.toml run on creation (dependency install, env generation, copying gitignored files). The worktree is registered as a DSH workspace — start a new session inside it to work there.',
         parameters: {
             branch: { type: 'string', required: true, description: 'Name of the branch to create.' },
             base: { type: 'string', description: 'Base ref to branch from (default: the repository default branch; `@` = the currently checked-out branch/worktree).' },
-            hooks: { type: 'boolean', description: 'Run wt.toml start hooks (default true). Pass false to skip setup steps.' },
+            hooks: { type: 'boolean', description: 'Run .config/wt.toml start hooks (default true). Pass false to skip setup steps.' },
         },
         output: {
             schema: {
@@ -80,7 +80,7 @@ function registerTools(ctx, config) {
                     type: 'text',
                     text: [
                         `Created branch ${JSON.stringify(value.branch)} with worktree at ${value.path}`,
-                        `  start hooks: ${value.registrationWarning === undefined ? 'ran (wt.toml pre-start/post-start)' : 'state unknown'}`,
+                        `  start hooks: ${value.registrationWarning === undefined ? 'ran (.config/wt.toml pre-start/post-start)' : 'state unknown'}`,
                         `  tip: start a new session with this workspace to work inside it.`,
                         ...(value.registrationWarning !== undefined ? [`  note: ${value.registrationWarning}`] : []),
                     ].join('\n'),
@@ -176,7 +176,7 @@ function registerTools(ctx, config) {
     }));
     ctx.tools.register(defineTool({
         name: 'worktrunk_merge',
-        description: 'Merge a worktree\'s branch into a target branch (default: the repository default branch) with worktrunk: squash & rebase, fast-forward, then remove the worktree. Run its wt.toml pre-merge hooks as part of the merge. Refuses when the target worktree contains the current session.',
+        description: 'Merge a worktree\'s branch into a target branch (default: the repository default branch) with worktrunk: squash & rebase, fast-forward, then remove the worktree. Run its .config/wt.toml pre-merge hooks as part of the merge. Refuses when the target worktree contains the current session.',
         parameters: {
             branch: { type: 'string', required: true, description: 'Branch whose worktree should be merged. Its worktree is the working directory for the merge.' },
             target: { type: 'string', description: 'Branch to merge into (default: the repository default branch).' },
@@ -403,7 +403,7 @@ function registerContextNote(ctx, config) {
         const text = [
             `You are working inside the worktrunk git worktree for branch ${JSON.stringify(found.branch)} at ${found.path}.`,
             `  HEAD: ${found.headShortSha ?? '?'}${found.headSubject === null ? '' : ` ${found.headSubject}`}`,
-            'Start hooks from wt.toml ran at creation; sync gitignored files (secrets, local config) with worktrunk_copy_ignored or /wt copy-ignored.',
+            'Start hooks from .config/wt.toml ran at creation; sync gitignored files (secrets, local config) with worktrunk_copy_ignored or /wt copy-ignored.',
         ].join('\n');
         return {
             kind: 'enter',

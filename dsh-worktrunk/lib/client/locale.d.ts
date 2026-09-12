@@ -25,6 +25,7 @@ export declare const en: {
     'panel.create': string;
     'panel.sessions': string;
     'panel.noSessions': string;
+    'panel.synced': string;
     'create.title': string;
     'create.description': string;
     'create.branch': string;

@@ -1,7 +1,10 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 /**
  * Removal confirmation. `wt` owns the gates; this dialog only states them, so
- * the two choices it offers map one-to-one onto `--force` and `--force-delete`.
+ * its choices map one-to-one onto `--force`, `--force-delete`, and keeping the
+ * branch. Both branch choices are always offered when a branch can be deleted —
+ * the panel cannot know whether the branch is merged, and `wt remove` refuses an
+ * unmerged branch without `--force-delete`.
  */
 import { useState } from 'react';
 /** What the dialog must tell the user, and which gates apply. */
@@ -44,9 +47,9 @@ export function RemoveDialog(props) {
             removeDialogSubmit(facts, { force, forceDeleteBranch, keepBranch }, props.onSubmit);
         }, children: [_jsx("h3", { children: t('remove.title') }), _jsx("p", { children: t('remove.description', { branch: row.branch, path: row.path }) }), facts.lines.length === 0 ? null : _jsx("ul", { children: facts.lines.map(line => _jsx("li", { children: line }, line)) }), facts.needsForce
                 ? (_jsxs("label", { children: [_jsx("input", { type: "checkbox", checked: force, onChange: event => setForce(event.target.checked) }), t('remove.force')] }))
-                : null, facts.canDeleteBranch && props.unmerged
-                ? (_jsxs("label", { children: [_jsx("input", { type: "checkbox", checked: forceDeleteBranch, onChange: event => setForceDeleteBranch(event.target.checked) }), t('remove.forceDeleteBranch')] }))
-                : null, facts.canDeleteBranch && !props.unmerged
-                ? (_jsxs("label", { children: [_jsx("input", { type: "checkbox", checked: keepBranch, onChange: event => setKeepBranch(event.target.checked) }), t('remove.keepBranch')] }))
+                : null, facts.canDeleteBranch
+                ? (_jsxs("label", { className: "wt-dialog-choice", children: [_jsx("input", { type: "checkbox", checked: forceDeleteBranch, onChange: event => setForceDeleteBranch(event.target.checked) }), t('remove.forceDeleteBranch'), _jsx("span", { className: "wt-dialog-hint", children: t('remove.branchUnmerged') })] }))
+                : null, facts.canDeleteBranch
+                ? (_jsxs("label", { className: "wt-dialog-choice", children: [_jsx("input", { type: "checkbox", checked: keepBranch, onChange: event => setKeepBranch(event.target.checked) }), t('remove.keepBranch')] }))
                 : null, props.errorKey === undefined ? null : _jsx("p", { className: "wt-dialog-error", children: t(props.errorKey) }), _jsxs("footer", { children: [_jsx("button", { type: "button", onClick: props.onCancel, children: t('remove.cancel') }), _jsx("button", { type: "submit", disabled: blocked || props.pending === true, children: t('remove.submit') })] })] }));
 }

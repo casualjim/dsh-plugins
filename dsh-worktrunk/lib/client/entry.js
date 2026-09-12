@@ -13,10 +13,29 @@ import { RemoveDialog } from './panel/RemoveDialog.js';
 import { MergeDialog } from './panel/MergeDialog.js';
 import { PermissionDialog } from './panel/PermissionDialog.js';
 import { PanelIcon } from './PanelIcon.js';
+import worktreeCss from './worktree.css';
 /** Panel identity shared by the sidebar entry and the main-column occupant. */
 export const WORKTRUNK_PANEL_ID = 'worktrunk';
 /** Sidebar row order, after the shipped entries. */
 export const WORKTRUNK_PANEL_ORDER = 20;
+/** The style-tag id the panel's stylesheet is injected under, per the shell's convention. */
+export const WORKTRUNK_CSS_TAG_ID = 'dsh-worktrunk/worktree.css';
+/**
+ * Inject the panel's stylesheet once. DSH's shell styles are CSS-modules-scoped, so without
+ * this every `button`/`ul`/`li` renders as a browser default; the tag id makes a second mount
+ * (or a second plugin instance) a no-op. Absent DOM (tests, SSR) is a no-op too.
+ */
+export function injectPanelStyle() {
+    if (typeof document === 'undefined')
+        return;
+    if (document.querySelector(`style[data-plugin-css=${JSON.stringify(WORKTRUNK_CSS_TAG_ID)}]`) !== null)
+        return;
+    const tag = document.createElement('style');
+    tag.dataset.plugin = 'dsh-worktrunk';
+    tag.dataset.pluginCss = WORKTRUNK_CSS_TAG_ID;
+    tag.textContent = worktreeCss;
+    document.head.appendChild(tag);
+}
 /** Header facts for a panel whose repository read has not landed yet. */
 const NO_REPO = { root: '', defaultBranch: 'main', forge: null };
 /**
@@ -32,12 +51,12 @@ export function currentWorkspaceIdOf(rows, currentSessionId) {
     }
     return items[0]?.workspaceId;
 }
-/** What a permission outcome means for the session. */
+/** What a permission outcome means for the session. `undefined` means "claim nothing". */
 export function describePermissionOutcome(status) {
     switch (status) {
         case 'applied':
         case 'already-full-access':
-            return { key: 'permission.applied', openSession: true };
+            return { key: undefined, openSession: true };
         case 'user-restricted':
             return { key: 'permission.userRestricted', openSession: true };
         default:
@@ -58,7 +77,7 @@ export function createPermissionConfirmation() {
                 const sessionId = await input.sessions.create({ cwd });
                 const result = await input.ensurePermission({ sessionId });
                 const outcome = describePermissionOutcome(result.status);
-                input.notice(outcome.key === 'permission.applied' ? undefined : outcome.key);
+                input.notice(outcome.key);
                 if (outcome.openSession)
                     input.sessions.open(sessionId);
             }
@@ -77,6 +96,7 @@ export const inject = ['connection', 'locale', 'slots', 'sessions', 'workspaces'
 export function apply(ctx) {
     const client = ctx;
     const t = ctx.locale.bind(WORKTRUNK_NS);
+    injectPanelStyle();
     ctx.effect(() => ctx.locale.register(WORKTRUNK_NS, 'en', en), 'dsh-worktrunk: locale dictionary');
     const connection = createWorktrunkConnection(client.connection.rpc);
     ctx.effect(() => () => connection.dispose(), 'dsh-worktrunk: connection disposal');
@@ -137,13 +157,15 @@ export function apply(ctx) {
             onNewSession: (row) => { setErrorKey(undefined); setDialog({ kind: 'permission', cwd: row.path }); },
             onSyncIgnored: (row) => {
                 const workspaceId = currentWorkspaceId();
-                if (workspaceId !== undefined)
-                    void connection.copyIgnored({ workspaceId, path: row.path });
+                if (workspaceId === undefined)
+                    return;
+                setErrorKey(undefined);
+                void connection.copyIgnored({ workspaceId, path: row.path })
+                    .then(() => setErrorKey('panel.synced'))
+                    .catch(error => setErrorKey(worktreeErrorMessageKey(error)));
             },
             onMerge: (row) => { setErrorKey(undefined); setDialog({ kind: 'merge', row: row }); },
-            // ponytail: `unmerged` is not in the panel snapshot, so the delete-branch gate cannot be
-            // pre-emptive; the host refuses and the notice names it. Widen WorktreeRow if it must show.
-            onRemove: (row) => { setErrorKey(undefined); setDialog({ kind: 'remove', row: row, unmerged: false }); },
+            onRemove: (row) => { setErrorKey(undefined); setDialog({ kind: 'remove', row: row }); },
         }), dialog.kind === 'create'
             ? createElement(CreateDialog, {
                 repo: store.getSnapshot().repo ?? NO_REPO,
@@ -157,7 +179,6 @@ export function apply(ctx) {
             : null, dialog.kind === 'remove'
             ? createElement(RemoveDialog, {
                 row: dialog.row,
-                unmerged: dialog.unmerged,
                 t,
                 errorKey,
                 onCancel: () => setDialog({ kind: 'none' }),

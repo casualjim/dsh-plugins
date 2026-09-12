@@ -25,6 +25,7 @@ export const en = {
     'panel.create': 'Create worktree',
     'panel.sessions': 'Sessions',
     'panel.noSessions': 'No sessions yet',
+    'panel.synced': 'Gitignored files synced.',
     'create.title': 'Create worktree',
     'create.description': 'A new branch and worktree in {repo}. Worktrees live outside the repository.',
     'create.branch': 'New branch name',

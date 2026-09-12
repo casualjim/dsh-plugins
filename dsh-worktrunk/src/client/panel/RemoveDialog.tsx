@@ -1,6 +1,9 @@
 /**
  * Removal confirmation. `wt` owns the gates; this dialog only states them, so
- * the two choices it offers map one-to-one onto `--force` and `--force-delete`.
+ * its choices map one-to-one onto `--force`, `--force-delete`, and keeping the
+ * branch. Both branch choices are always offered when a branch can be deleted —
+ * the panel cannot know whether the branch is merged, and `wt remove` refuses an
+ * unmerged branch without `--force-delete`.
  */
 import { useState, type ReactElement } from 'react'
 import type { Translate } from '@deepseek-ai/dsh-client-ui-slots'
@@ -40,7 +43,6 @@ export function removeDialogSubmit(
 
 export interface RemoveDialogProps {
 	readonly row: WorktreeRow
-	readonly unmerged: boolean
 	readonly t: Translate
 	readonly pending?: boolean
 	readonly errorKey?: string
@@ -76,17 +78,23 @@ export function RemoveDialog(props: RemoveDialogProps): ReactElement {
 					</label>
 				)
 				: null}
-			{facts.canDeleteBranch && props.unmerged
+			{/*
+			 * `wt` is the gate: the panel snapshot does not carry the branch's merged state, so
+			 * both branch choices are always offered and `wt remove` refuses an unmerged branch
+			 * without `--force-delete`. The unmerged copy explains the force-delete option.
+			 */}
+			{facts.canDeleteBranch
 				? (
-					<label>
+					<label className="wt-dialog-choice">
 						<input type="checkbox" checked={forceDeleteBranch} onChange={event => setForceDeleteBranch(event.target.checked)} />
 						{t('remove.forceDeleteBranch')}
+						<span className="wt-dialog-hint">{t('remove.branchUnmerged')}</span>
 					</label>
 				)
 				: null}
-			{facts.canDeleteBranch && !props.unmerged
+			{facts.canDeleteBranch
 				? (
-					<label>
+					<label className="wt-dialog-choice">
 						<input type="checkbox" checked={keepBranch} onChange={event => setKeepBranch(event.target.checked)} />
 						{t('remove.keepBranch')}
 					</label>
